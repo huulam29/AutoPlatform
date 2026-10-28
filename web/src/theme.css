@@ -1,0 +1,190 @@
+/* Agentline Studio theme: "Flight Deck" (ARCHITECTURE.md decisions 58-59,
+   docs/redesign-proposal.md). The ONE token source: primitives, then semantic tokens, then
+   component sizes. styles.css uses var(--...) only; the ux-ui kit's lint_hardcodes.py gates it.
+   Dark by default; [data-theme="light"] swaps the semantic layer only. */
+
+:root {
+  /* -- primitives ------------------------------------------------------------------------ */
+  --obsidian-950: #0a0e14;
+  --navy-900: #0f1622;
+  --navy-850: #141d2b;
+  --navy-800: #1a2536;
+  --navy-700: #1f2a3a;
+  --navy-600: #2b3a50;
+  --navy-500: #3d5674;
+  --ice-100: #dce6f0;
+  --steel-400: #8796a8;
+  --steel-600: #5e6b7d;
+  --cyan-400: #4fd1e8;
+  --cyan-950: #06222a;
+  --ice-300: #a8e6f5;
+  --amber-400: #f2b33d;
+  --amber-950: #241700;
+  --red-400: #f2687a;
+  --red-950: #2a0a10;
+  --mint-400: #5bd6a0;
+  --black-a45: rgb(0 0 0 / 45%);
+  --black-a30: rgb(0 0 0 / 30%);
+
+  /* -- semantic: surfaces, text, accents ------------------------------------------------- */
+  --surface-page: var(--obsidian-950); /* window, canvas */
+  --surface-rail: var(--navy-900); /* nav, lists, chat */
+  --surface-panel: var(--navy-850); /* inspector, cards */
+  --surface-raised: var(--navy-800); /* hover, selected, menus */
+  --surface-overlay: var(--black-a45); /* modal backdrop */
+  --border-hairline: var(--navy-700);
+  --border-strong: var(--navy-600);
+  --decor-tick: var(--navy-500);
+  --text-primary: var(--ice-100); /* 13.4:1 on panel */
+  --text-secondary: var(--steel-400); /* 5.6:1 on panel */
+  --text-disabled: var(--steel-600); /* disabled + decorative only */
+  --accent-action: var(--cyan-400); /* 9.4:1 on panel */
+  --accent-on-action: var(--cyan-950); /* 9.2:1 on cyan */
+  --accent-focus: var(--ice-300);
+  --canvas-grid: var(--navy-700);
+
+  /* -- semantic: status (decision 59; always with an icon + word) ------------------------- */
+  --status-done: var(--mint-400);
+  --status-running: var(--cyan-400);
+  --status-attention: var(--amber-400); /* a person must act */
+  --status-on-attention: var(--amber-950);
+  --status-failed: var(--red-400);
+  --status-on-failed: var(--red-950);
+  --status-idle: var(--steel-400);
+  --status-skipped: var(--steel-600);
+
+  /* -- type -------------------------------------------------------------------------------- */
+  --font-ui: system-ui, -apple-system, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --fs-micro: 11px; /* mono uppercase labels only */
+  --fs-sm: 12px;
+  --fs-base: 13px;
+  --fs-md: 15px;
+  --fs-lg: 18px;
+  --fs-xl: 24px;
+  --fs-2xl: 32px;
+  --lh-tight: 1.2;
+  --lh-body: 1.5;
+  --track-micro: 0.12em;
+  --track-label: 0.06em;
+
+  /* -- space (4 px base; 6 and 10 are the dense-UI half steps) ---------------------------- */
+  --space-0-5: 2px;
+  --space-1: 4px;
+  --space-1-5: 6px;
+  --space-2: 8px;
+  --space-2-5: 10px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+
+  /* -- shape ------------------------------------------------------------------------------- */
+  --radius-chip: 2px;
+  --radius-control: 6px;
+  --radius-panel: 10px;
+  --radius-round: 999px;
+  --border-width: 1px;
+  --border-width-strong: 2px;
+  --border-width-mark: 1.5px; /* the logo diamond */
+  --mask-solid: #000; /* mask geometry, not a visible color */
+  --focus-ring: 2px solid var(--accent-focus);
+  --focus-offset: 2px;
+  --shadow-float: 0 8px 28px var(--black-a30); /* menus and dialogs only */
+  --decor-ticks:
+    linear-gradient(var(--decor-tick), var(--decor-tick)) top var(--space-1-5) left var(--space-1-5) / var(--size-tick) var(--border-width) no-repeat,
+    linear-gradient(var(--decor-tick), var(--decor-tick)) top var(--space-1-5) left var(--space-1-5) / var(--border-width) var(--size-tick) no-repeat,
+    linear-gradient(var(--decor-tick), var(--decor-tick)) bottom var(--space-1-5) right var(--space-1-5) / var(--size-tick) var(--border-width) no-repeat,
+    linear-gradient(var(--decor-tick), var(--decor-tick)) bottom var(--space-1-5) right var(--space-1-5) / var(--border-width) var(--size-tick) no-repeat;
+
+  /* -- motion ------------------------------------------------------------------------------ */
+  --dur-fast: 120ms; /* hover, press */
+  --dur-panel: 200ms;
+  --dur-dialog: 240ms;
+  --dur-sweep: 2.4s; /* the running-node sweep, the only loop */
+  --dur-pulse: 1.4s; /* the collapsed-panel dot, 3 times */
+  --dur-instant: 0.01ms; /* reduced motion */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --press-shift: 1px;
+
+  /* -- component sizes --------------------------------------------------------------------- */
+  --size-topbar: 44px;
+  --size-rail: 32px;
+  --size-icon: 14px;
+  --size-icon-sm: 12px;
+  --size-icon-btn: 28px;
+  --size-fab: 40px;
+  --size-dot: 8px;
+  --size-tick: 8px;
+  --size-list: 260px;
+  --size-side: 340px;
+  --size-side-wide: 420px;
+  --size-chat: 380px;
+  --size-history-col: 240px;
+  --size-add-menu: 248px;
+  --size-node: 200px;
+  --size-node-min: 64px;
+  --size-input-sm: 90px;
+  --size-id-input: 180px;
+  --size-secret: 220px;
+  --size-form: 640px;
+  --size-form-wide: 820px;
+  --size-key-form: 420px;
+  --size-modal: 560px;
+  --size-modal-wide: 760px;
+  --size-choice-card: 180px;
+  --size-field-min: 240px; /* a settings field column */
+  --size-search: 320px;
+  --size-cost-card: 200px;
+  --size-cost-col: 260px;
+  --size-problem-list-min: 280px;
+  --size-problem-list-max: 380px;
+  --size-chart: 120px;
+  --size-pre-max: 320px;
+  --size-pre-tall: 360px;
+  --size-list-max: 260px;
+  --size-history-max: 420px;
+  --size-issues-max: 140px;
+  --size-img-max-w: 220px;
+  --size-img-max-h: 160px;
+  --size-thumb: 56px;
+  --size-thumb-sm: 40px; /* the image on a transcript card */
+  --size-map-key: 60px;
+  --size-loc: 36px;
+  --size-meter: 6px;
+  --size-taskbar: 3px;
+  --size-badge-line: 16px;
+  --size-node-strip: 3px;
+
+  color-scheme: dark;
+}
+
+/* Daylight: the same structure on light surfaces (opt-in with data-theme="light"). */
+:root[data-theme="light"] {
+  --surface-page: #f3f6fa;
+  --surface-rail: #e9eef4;
+  --surface-panel: #ffffff;
+  --surface-raised: #e2e9f1;
+  --surface-overlay: rgb(10 14 20 / 35%);
+  --border-hairline: #d3dbe5;
+  --border-strong: #b6c2d1;
+  --decor-tick: #9aabbf;
+  --text-primary: #0f1a26;
+  --text-secondary: #4a5a6c;
+  --text-disabled: #8a97a6;
+  --accent-action: #0a6f82;
+  --accent-on-action: #ffffff;
+  --accent-focus: #0a6f82;
+  --canvas-grid: #dfe6ee;
+  --status-done: #0f7550;
+  --status-running: #0a6f82;
+  --status-attention: #9a5b00;
+  --status-on-attention: #ffffff;
+  --status-failed: #c02a45;
+  --status-on-failed: #ffffff;
+  --status-idle: #4a5a6c;
+  --status-skipped: #8a97a6;
+  color-scheme: light;
+}

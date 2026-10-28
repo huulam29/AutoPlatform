@@ -1,0 +1,45 @@
+{"app_name":"Agentline","timestamp":"2026-10-19 10:15:00.00 -0500","app_version":"0.1.0","slice_uuid":"0b3c5f8e-1111-3a2b-9c4d-5e6f7a8b9c0d","build_version":"202610191000","platform":1,"bundleID":"dev.agentline.app","share_with_app_devs":0,"is_first_party":0,"bug_type":"309","os_version":"macOS 27.0 (26A428)","roots_installed":0,"name":"Agentline","incident_id":"8C1F2A3B-4D5E-4F60-8172-93A4B5C6D7E8"}
+{
+  "uptime" : 130000,
+  "procRole" : "Foreground",
+  "version" : 2,
+  "userID" : 502,
+  "deployVersion" : 210,
+  "modelCode" : "MacBookPro17,1",
+  "coalitionID" : 1637,
+  "osVersion" : {
+    "train" : "macOS 27.0",
+    "build" : "26A428",
+    "releaseType" : "User"
+  },
+  "captureTime" : "2026-10-19 10:15:00.1234 -0500",
+  "codeSigningMonitor" : 1,
+  "incident" : "8C1F2A3B-4D5E-4F60-8172-93A4B5C6D7E8",
+  "pid" : 48213,
+  "translated" : false,
+  "cpuType" : "ARM-64",
+  "procLaunch" : "2026-10-19 10:14:52.5001 -0500",
+  "procName" : "Agentline",
+  "procPath" : "\/Users\/USER\/*\/Agentline.app\/Contents\/MacOS\/Agentline",
+  "bundleInfo" : {"CFBundleShortVersionString":"0.1.0","CFBundleVersion":"202610191000","CFBundleIdentifier":"dev.agentline.app"},
+  "parentProc" : "launchd",
+  "parentPid" : 1,
+  "sip" : "enabled",
+  "exception" : {"codes":"0x0000000000000001, 0x00000001a2b3c4d5","rawCodes":[1,7021045973],"type":"EXC_BREAKPOINT","signal":"SIGTRAP"},
+  "termination" : {"flags":0,"code":5,"namespace":"SIGNAL","indicator":"Trace\/BPT trap: 5","byProc":"exc handler","byPid":48213},
+  "os_fault" : {"process":"Agentline"},
+  "asi" : {"libswiftCore.dylib":["Agentline\/CrashCapture.swift:61: Fatal error: AGENTLINE_TEST_CRASH=trap sk-ant-api03-SECRETSECRETSECRET1234"]},
+  "faultingThread" : 0,
+  "threads" : [{"triggered":true,"id":6058266,"threadState":{"x":[{"value":0}],"flavor":"ARM_THREAD_STATE64","pc":{"value":7021045973}},"queue":"com.apple.main-thread","frames":[{"imageOffset":2544852,"symbol":"_assertionFailure(_:_:file:line:flags:)","symbolLocation":172,"imageIndex":1},{"imageOffset":118220,"symbol":"closure #1 in static CrashCapture.scheduleTestCrash()","symbolLocation":212,"imageIndex":0},{"imageOffset":120004,"symbol":"thunk for @escaping @callee_guaranteed () -> ()","symbolLocation":48,"imageIndex":0},{"imageOffset":10048,"symbol":"_dispatch_call_block_and_release","symbolLocation":32,"imageIndex":2},{"imageOffset":4204,"symbol":"main","symbolLocation":208,"imageIndex":0},{"imageOffset":204416,"symbol":"start","symbolLocation":6688,"imageIndex":3}]},{"id":6058300,"frames":[{"imageOffset":3104,"symbol":"mach_msg2_trap","symbolLocation":8,"imageIndex":4}]}],
+  "usedImages" : [
+  {"source":"P","arch":"arm64","base":4294967296,"size":1048576,"uuid":"0b3c5f8e-1111-3a2b-9c4d-5e6f7a8b9c0d","path":"\/Users\/USER\/*\/Agentline.app\/Contents\/MacOS\/Agentline","name":"Agentline"},
+  {"source":"P","arch":"arm64e","base":6979321856,"size":4194304,"uuid":"11111111-2222-3333-4444-555555555555","path":"\/usr\/lib\/swift\/libswiftCore.dylib","name":"libswiftCore.dylib"},
+  {"source":"P","arch":"arm64e","base":6970000000,"size":290000,"uuid":"22222222-3333-4444-5555-666666666666","path":"\/usr\/lib\/system\/libdispatch.dylib","name":"libdispatch.dylib"},
+  {"source":"P","arch":"arm64e","base":6960000000,"size":630000,"uuid":"33333333-4444-5555-6666-777777777777","path":"\/usr\/lib\/dyld","name":"dyld"},
+  {"source":"P","arch":"arm64e","base":6950000000,"size":240000,"uuid":"44444444-5555-6666-7777-888888888888","path":"\/usr\/lib\/system\/libsystem_kernel.dylib","name":"libsystem_kernel.dylib"}
+  ],
+  "sharedCache" : {"base":6948372480,"size":5047205888,"uuid":"55555555-6666-7777-8888-999999999999"},
+  "vmSummary" : "ReadOnly portion of Libraries: Total=1.4G resident=0K(0%)",
+  "legacyInfo" : {"threadTriggered":{"queue":"com.apple.main-thread"}},
+  "trialInfo" : {"rollouts":[],"experiments":[]}
+}

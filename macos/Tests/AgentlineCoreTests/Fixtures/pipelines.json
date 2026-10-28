@@ -1,0 +1,12 @@
+{
+ "dir": "/tmp/p",
+ "pipelines": [
+  {
+   "name": "ticket-to-eod",
+   "path": "/tmp/p/ticket-to-eod.yaml",
+   "pipeline": "ticket-to-eod",
+   "nodes": 9,
+   "issues": 0
+  }
+ ]
+}

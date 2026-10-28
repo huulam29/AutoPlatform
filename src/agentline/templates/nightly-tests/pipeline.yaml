@@ -1,0 +1,47 @@
+# Run the test suite every night; when it fails, comment on a Jira issue with the output.
+version: 1
+name: nightly-tests
+description: Runs the test suite on a schedule and comments on a Jira issue when it fails
+trigger:
+  type: schedule
+  schedule: "0 2 * * *"   # 02:00 every day (minute hour day-of-month month day-of-week)
+  timezone: UTC           # or an IANA name such as Europe/Berlin
+  catchup: latest         # after downtime fire only the most recent missed night
+
+nodes:
+  tests:
+    type: action
+    uses: shell.run
+    description: Run the tests. Their output goes to stderr; stdout is only the verdict.
+    with:
+      cwd: /srv/checkouts/app   # change me: a checkout of the repo to test
+      cmd: "make test >&2 && printf passed || printf failed"
+      timeout: 3600
+      idempotent: true          # safe to run again after a crash
+    out: tests
+
+  route:
+    type: router
+    in: [tests]
+    switch: tests.stdout_tail
+
+  report_failure:
+    type: action
+    uses: jira.comment
+    in: [tests]
+    with:
+      key: OPS-1                # change me: the issue that collects nightly failures
+      body: "Nightly tests failed (scheduled for {{payload.scheduled_for}}).\n\n{{tests.stderr_tail}}"
+
+  passed:
+    type: action
+    uses: shell.run
+    description: Nothing to report; replace with a notification if you like.
+    with:
+      cmd: "echo nightly tests passed"
+      idempotent: true
+
+edges:
+  - tests -> route
+  - { from: route, to: report_failure, when: failed }
+  - { from: route, to: passed, when: passed }

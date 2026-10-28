@@ -1,0 +1,8 @@
+{
+  "type": "object",
+  "required": ["decision", "reason"],
+  "properties": {
+    "decision": {"enum": ["APPROVE", "ESCALATE"]},
+    "reason": {"type": "string"}
+  }
+}

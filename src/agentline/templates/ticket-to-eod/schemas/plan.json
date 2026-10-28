@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "required": ["summary", "approach", "steps"],
+  "properties": {
+    "summary": { "type": "string", "minLength": 3 },
+    "approach": { "type": "string" },
+    "steps": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "files": { "type": "array", "items": { "type": "string" } },
+    "risks": { "type": "array", "items": { "type": "string" } }
+  }
+}

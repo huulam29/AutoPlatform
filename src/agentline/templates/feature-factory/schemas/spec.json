@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "required": ["title", "summary", "requirements", "acceptance"],
+  "properties": {
+    "title": {"type": "string"},
+    "summary": {"type": "string"},
+    "requirements": {"type": "array", "items": {"type": "string"}},
+    "acceptance": {"type": "array", "items": {"type": "string"}},
+    "out_of_scope": {"type": "array", "items": {"type": "string"}}
+  }
+}

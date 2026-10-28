@@ -1,0 +1,25 @@
+# Example agentline config. Lives on the agentline host, never in a target repo.
+allow_images = ["agentline/", "ghcr.io/acme/"]
+
+[repos.app]
+remote = "git@github.com:acme/app.git"   # mirrored to ~/.agentline/mirrors/app.git
+image_profile = "python"
+
+[environments.eod]
+deploy = "./ops/deploy.sh eod {branch}"
+test = "./ops/test.sh eod"
+deploy_class = true
+
+[images.python]
+from = "agentline/runner-base"
+apt = ["python3", "python3-venv"]
+
+# Harnesses and model sources: see docs/harnesses-and-models.md and examples/mixed-agents/
+[providers.openrouter]
+type = "openai-compatible"
+base_url = "https://openrouter.ai/api/v1"
+api_key_env = "OPENROUTER_API_KEY"
+
+[models.free-llama]
+provider = "openrouter"
+model = "meta-llama/llama-3.3-70b-instruct:free"

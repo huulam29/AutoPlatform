@@ -1,0 +1,15 @@
+{
+ "version": "0.1.0.dev0",
+ "pipelines": [
+  "mixed-agents"
+ ],
+ "jira_poll": {
+  "enabled": false,
+  "every_s": null,
+  "pipelines": [],
+  "last_poll_at": null,
+  "last_error": null,
+  "runs_started": 0
+ },
+ "keys_managed": "keychain"
+}

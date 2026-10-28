@@ -1,0 +1,35 @@
+#!/bin/sh
+# Formats the staged Python / Markdown files with ruff and stages the result, then refuses the
+# commit if `ruff check` finds problems in them. Enabled with: git config core.hooksPath .githooks
+# Skip once with `git commit --no-verify`.
+#
+# A file that also has unstaged changes isn't formatted (staging it again would commit those
+# changes too): the commit stops instead and names it.
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR -- '*.py' '*.pyi' '*.md')
+[ -z "$staged" ] && exit 0
+
+# one path per line; paths may contain spaces
+IFS='
+'
+fail=0
+for f in $staged; do
+    if uv run ruff format --force-exclude --check --quiet -- "$f" >/dev/null 2>&1; then
+        continue
+    fi
+    if [ -n "$(git diff --name-only -- "$f")" ]; then
+        echo "pre-commit: $f needs formatting but has unstaged changes; run: uv run ruff format \"$f\" && git add \"$f\"" >&2
+        fail=1
+        continue
+    fi
+    uv run ruff format --force-exclude --quiet -- "$f" && git add -- "$f" && echo "pre-commit: formatted $f"
+done
+[ "$fail" = 1 ] && exit 1
+
+py=$(printf '%s\n' "$staged" | grep -E '\.pyi?$')
+if [ -n "$py" ] && ! uv run ruff check --force-exclude -- $py; then
+    echo "pre-commit: ruff check failed (fix it, or try: uv run ruff check --fix .)" >&2
+    exit 1
+fi
+exit 0

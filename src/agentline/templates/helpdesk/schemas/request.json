@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "required": ["repo", "task", "done_when"],
+  "properties": {
+    "repo": { "type": "string", "minLength": 3 },
+    "task": { "type": "string", "minLength": 3 },
+    "done_when": { "type": "string" }
+  }
+}

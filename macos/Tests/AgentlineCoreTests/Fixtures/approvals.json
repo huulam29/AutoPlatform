@@ -1,0 +1,14 @@
+[
+ {
+  "run_id": "r-2",
+  "pipeline": "ticket-to-eod",
+  "node_id": "approve_deploy",
+  "execution_id": "x2",
+  "prompt": "Deploy PROJ-42 to staging?",
+  "approvers": [],
+  "waiting_since": 1760000052.0,
+  "payload": {
+   "issue_key": "PROJ-42"
+  }
+ }
+]

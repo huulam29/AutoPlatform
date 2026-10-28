@@ -1,0 +1,46 @@
+# An agent reviews a pull request's diff with read-only tools and posts its review as a comment.
+#   agentline run pr-review --payload '{"repo": "acme/app", "number": 42}'
+# Needs the GitHub CLI (gh) and GITHUB_TOKEN on the worker host.
+version: 1
+name: pr-review
+description: An agent reviews a GitHub pull request diff (read-only) and posts a comment
+trigger: { type: manual }
+budget_usd: 1.0
+
+nodes:
+  fetch_diff:
+    type: agent
+    runner: shell
+    description: Fetch the diff with gh (read-only)
+    prompt: "diff of {{payload.repo}}#{{payload.number}}"   # the shell runner gets it on stdin
+    with:
+      cmd: 'gh pr diff "$PR" --repo "$REPO"'
+      env: { PR: "{{payload.number}}", REPO: "{{payload.repo}}" }
+      pass_env: [GITHUB_TOKEN, GH_TOKEN]
+    out: diff
+    timeout: 2m
+
+  review:
+    type: agent
+    harness: claude-code
+    prompt: prompts/review.md
+    in: [diff]
+    out: review
+    output_schema: schemas/review.json
+    allowed_tools: [read]   # read-only: no edits, no shell
+    max_turns: 10
+    budget_usd: 1.0
+    timeout: 10m
+
+  comment:
+    type: action
+    uses: shell.run
+    description: Post the review (values go through env vars, never into the command line)
+    in: [review]
+    with:
+      cmd: 'gh pr comment "$PR" --repo "$REPO" --body "$BODY"'
+      env: { PR: "{{payload.number}}", REPO: "{{payload.repo}}", BODY: "{{review.body}}" }
+    out: posted
+
+edges:
+  - fetch_diff -> review -> comment

@@ -1,0 +1,18 @@
+{
+ "ok": true,
+ "count": 2,
+ "models": [
+  {
+   "id": "qwen/qwen3-8b:free",
+   "name": "Qwen3 8B (free)",
+   "free": true,
+   "context_length": 40960
+  },
+  {
+   "id": "openai/gpt-5",
+   "name": "GPT-5",
+   "free": false,
+   "context_length": null
+  }
+ ]
+}

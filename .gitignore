@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.db
+*.db-wal
+*.db-shm
+chaos-out/
+dist/
+.env
+.claude/
+web/node_modules/
+web/dist/
+macos/build/
+macos/.build/
+
+# design-gate receipts (ux-ui kit gate.mjs): local, machine-specific
+web/.ds-receipts/

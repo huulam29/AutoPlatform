@@ -1,0 +1,105 @@
+{
+ "kinds": {
+  "claude-code": {
+   "runner": "claude-code",
+   "provider_types": [
+    "anthropic"
+   ],
+   "needs_model": false,
+   "subscription": true,
+   "default_bin": "claude",
+   "description": "Claude Code CLI"
+  },
+  "llm": {
+   "runner": "llm",
+   "provider_types": [
+    "anthropic",
+    "openai-compatible"
+   ],
+   "needs_model": true,
+   "subscription": false,
+   "default_bin": null,
+   "description": "A direct model call"
+  }
+ },
+ "providers": [
+  {
+   "name": "anthropic",
+   "type": "anthropic",
+   "base_url": null,
+   "api_key_env": "ANTHROPIC_API_KEY",
+   "auth": "api-key",
+   "headers": {},
+   "description": "",
+   "implicit": true
+  },
+  {
+   "name": "openrouter",
+   "type": "openai-compatible",
+   "base_url": "https://openrouter.ai/api/v1",
+   "api_key_env": "OPENROUTER_API_KEY",
+   "auth": "api-key",
+   "headers": {
+    "X-Title": "agentline"
+   },
+   "description": "",
+   "implicit": false
+  }
+ ],
+ "models": [
+  {
+   "name": "free-llama",
+   "provider": "openrouter",
+   "model": "meta-llama/llama-3.3-70b-instruct:free",
+   "input_usd_per_mtok": null,
+   "output_usd_per_mtok": null,
+   "max_tokens": null,
+   "temperature": null,
+   "description": ""
+  }
+ ],
+ "agents": [
+  {
+   "name": "claude-code",
+   "kind": "claude-code",
+   "bin": null,
+   "model": null,
+   "extra_args": [],
+   "env": null,
+   "description": "",
+   "implicit": true
+  },
+  {
+   "name": "small-tasks",
+   "kind": "llm",
+   "bin": null,
+   "model": "free-llama",
+   "extra_args": [],
+   "env": [
+    "FOO"
+   ],
+   "description": "cheap",
+   "implicit": false
+  }
+ ],
+ "compatible_models": {
+  "claude-code": [],
+  "small-tasks": [
+   "free-llama"
+  ]
+ },
+ "keys": [
+  {
+   "name": "ANTHROPIC_API_KEY",
+   "set": false,
+   "source": null
+  },
+  {
+   "name": "OPENROUTER_API_KEY",
+   "set": true,
+   "source": "environment"
+  }
+ ],
+ "config_path": "/tmp/agentline.toml",
+ "note": "Saved. Running workers keep their old settings until restarted."
+}

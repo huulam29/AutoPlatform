@@ -1,0 +1,39 @@
+{
+ "runs": [
+  {
+   "id": "r-2",
+   "flow": "ticket-to-eod",
+   "flow_hash": "abc",
+   "payload": {
+    "issue_key": "PROJ-42",
+    "note_text": "x_y"
+   },
+   "status": "waiting",
+   "dedupe_key": "jira:PROJ-42",
+   "budget_usd": 5.0,
+   "cost_usd": 0.4213,
+   "error": null,
+   "created_at": 1760000000.5,
+   "updated_at": 1760000100.0,
+   "terminal": false
+  },
+  {
+   "id": "r-1",
+   "flow": "mixed-agents",
+   "flow_hash": "def",
+   "payload": {
+    "issue": {
+     "key": "OPS-7"
+    }
+   },
+   "status": "dead",
+   "dedupe_key": null,
+   "budget_usd": null,
+   "cost_usd": 0.0,
+   "error": "boom",
+   "created_at": 1759990000.0,
+   "updated_at": 1759990100.0,
+   "terminal": true
+  }
+ ]
+}

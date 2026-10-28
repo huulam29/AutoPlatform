@@ -1,0 +1,60 @@
+[project]
+name = "agentline"
+version = "0.1.0.dev0"
+description = "Self-hosted, durable engine for multi-agent software-delivery pipelines"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "ruamel-yaml>=0.18",
+]
+
+[project.scripts]
+agentline = "agentline.cli:main"
+
+[project.optional-dependencies]
+server = [
+    "fastapi>=0.146.0",
+    "uvicorn>=0.54.0",
+    "pydantic-ai-slim[openai,anthropic]>=2.54.0,<3",  # the built-in Chat harness
+]
+kafka = [
+    "confluent-kafka>=2.16.0",
+]
+postgres = [
+    "psycopg[binary]>=3.2",
+]
+
+[dependency-groups]
+dev = [
+    "fastapi>=0.146.0",
+    "httpx>=0.28.1",
+    "psycopg[binary]>=3.2",
+    "pydantic-ai-slim[openai,anthropic]>=2.54.0,<3",
+    "pytest>=8",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agentline"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".", "src"]
+addopts = "-q"
+markers = [
+    "slow: multi-second chaos runs",
+    "builtin_only: only the builtin harness is built in (no CLI harnesses set up)",
+]
+
+[tool.ruff]
+line-length = 100
+extend-exclude = [".claude"]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]

@@ -1,0 +1,35 @@
+# One real Claude Code run: plan (read-only) then fix (edit + bash) in a git worktree of the
+# sample repo. No Jira/GitHub/deploy: the point is the claude-code runner, the workspace,
+# cost accounting and the branch artifact. Run it with scripts/real_run.sh.
+version: 1
+name: real-claude-code
+description: Plan and fix a small bug in the sample repo with headless Claude Code
+trigger: { type: manual }
+budget_usd: 1.50
+
+nodes:
+  plan:
+    type: agent
+    harness: claude-code
+    prompt: prompts/plan.md
+    out: plan
+    output_schema: schemas/plan.json
+    allowed_tools: [read]
+    workspace: { type: local }
+    max_turns: 8
+    budget_usd: 0.40
+
+  fix:
+    type: agent
+    harness: claude-code
+    prompt: prompts/fix.md
+    in: [plan]
+    out: branch
+    allowed_tools: [read, edit, bash]
+    workspace: { type: local }
+    max_turns: 20
+    budget_usd: 1.00
+    timeout: 15m
+
+edges:
+  - plan -> fix

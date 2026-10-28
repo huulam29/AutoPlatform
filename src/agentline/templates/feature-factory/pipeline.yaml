@@ -1,0 +1,143 @@
+# Feature factory: spec -> build -> 4 parallel reviews -> (changes: rebuild, max 2 rounds)
+# -> AI approver -> merge to main, or escalate to a human.
+# Start it with a payload: {"feature": "what to build", "repo": "owner/name"}
+version: 1
+name: feature-factory
+description: A feature is specced, built, reviewed by 4 parallel agents (max 2 rework rounds), approved by AI or a human, and merged
+budget_usd: 25.0
+
+nodes:
+  spec:
+    type: agent
+    harness: claude-code
+    model: opus
+    prompt: prompts/spec-writer.md
+    out: spec
+    output_schema: schemas/spec.json
+    allowed_tools: [read]
+    skills: [spec-driven-development, planning-and-task-breakdown]
+    max_turns: 30
+
+  build:
+    type: agent
+    harness: claude-code
+    model: opus
+    prompt: prompts/builder.md
+    in: [spec, verdict?]
+    out: branch
+    allowed_tools: [read, edit, bash]
+    workspace: { type: container, image: auto }
+    skills: [incremental-implementation, test-driven-development, git-workflow-and-versioning]
+    timeout: 45m
+
+  open_pr:
+    type: action
+    uses: github.open_pr
+    in: [spec, branch]
+    out: pr
+    with:
+      repo: "{{payload.repo}}"
+      title: "{{spec.title}}"
+      body: "{{spec.summary}}"
+
+  security:
+    type: agent
+    harness: claude-code
+    model: opus
+    prompt: prompts/review-security.md
+    in: [spec, branch, pr]
+    out: security_review
+    output_schema: schemas/review.json
+    allowed_tools: [read]
+    workspace: { type: container, image: auto }
+    skills: [security-and-hardening]
+
+  ux:
+    type: agent
+    harness: claude-code
+    model: sonnet
+    prompt: prompts/review-ux.md
+    in: [spec, branch, pr]
+    out: ux_review
+    output_schema: schemas/review.json
+    allowed_tools: [read]
+    workspace: { type: container, image: auto }
+    skills: [frontend-ui-engineering]
+
+  ui_design:
+    type: agent
+    harness: claude-code
+    model: sonnet
+    prompt: prompts/review-ui.md
+    in: [spec, branch, pr]
+    out: ui_review
+    output_schema: schemas/review.json
+    allowed_tools: [read]
+    workspace: { type: container, image: auto }
+    skills: [frontend-ui-engineering]
+
+  code:
+    type: agent
+    harness: claude-code
+    model: sonnet
+    prompt: prompts/review-code.md
+    in: [spec, branch, pr]
+    out: code_review
+    output_schema: schemas/review.json
+    allowed_tools: [read]
+    workspace: { type: container, image: auto }
+    skills: [code-review-and-quality, code-simplification]
+
+  # WAIT FOR ALL 4 reviews: a join (4 incoming edges), no AI needed
+  gather:
+    type: action
+    uses: shell.run
+    in: [security_review, ux_review, ui_review, code_review]
+    out: verdict
+    with:
+      cmd: 'python3 "{{pipeline.dir}}/scripts/gather.py"'
+      output: json
+      idempotent: true
+
+  reviews:
+    type: router
+    switch: verdict.result
+
+  approver:
+    type: agent
+    harness: claude-code
+    model: opus
+    prompt: prompts/approver.md
+    in: [spec, pr, verdict]
+    out: decision
+    output_schema: schemas/decision.json
+    allowed_tools: [read]
+
+  decide:
+    type: router
+    switch: decision.decision
+
+  needs_human:
+    type: gate
+    in: [pr, decision]
+    prompt: "Escalated by the approver: {{decision.reason}}. Approve to merge {{pr.url}}."
+
+  merge:
+    type: action
+    uses: github.merge_pr
+    in: [pr]
+    out: merged
+
+edges:
+  - spec -> build -> open_pr
+  - open_pr -> security -> gather
+  - open_pr -> ux -> gather
+  - open_pr -> ui_design -> gather
+  - open_pr -> code -> gather
+  - gather -> reviews
+  - { from: reviews, to: build, when: CHANGES, max_loops: 2, on_exhausted: needs-review }
+  - { from: reviews, to: approver, when: PASS }
+  - approver -> decide
+  - { from: decide, to: merge, when: APPROVE }
+  - { from: decide, to: needs_human, when: ESCALATE }
+  - needs_human -> merge

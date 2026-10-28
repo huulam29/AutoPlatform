@@ -1,0 +1,78 @@
+# Jira ticket assigned -> plan -> implement -> PR -> review loop -> approval -> EOD deploy -> tests
+version: 1
+name: ticket-to-eod
+description: A Jira ticket becomes a reviewed PR, approved, deployed to EOD and tested
+trigger: { type: webhook, source: jira, event: issue_assigned }
+budget_usd: 5.0
+
+nodes:
+  read_ticket:
+    type: action
+    uses: jira.get_ticket
+    with: { key: "{{payload.issue_key}}" }
+    out: ticket
+
+  plan:
+    type: agent
+    harness: claude-code
+    prompt: prompts/plan.md
+    in: [ticket]
+    out: plan
+    output_schema: schemas/plan.json
+    allowed_tools: [read]
+    max_turns: 20
+
+  implement:
+    type: agent
+    harness: claude-code
+    prompt: prompts/implement.md
+    in: [ticket, plan, review?]
+    out: branch
+    allowed_tools: [read, edit, bash]
+    workspace: { type: container, image: auto }
+    budget_usd: 2.0
+    timeout: 30m
+
+  open_pr:
+    type: action
+    uses: github.open_pr
+    in: [ticket, plan, branch]
+    out: pr
+    with:
+      title: "{{ticket.key}}: {{plan.summary}}"
+
+  await_review:
+    type: wait
+    for: github.review
+    in: [pr]
+    out: review
+    poll_every: 5m
+
+  route:
+    type: router
+    switch: review.state
+
+  approve:
+    type: gate
+    in: [pr, branch]
+    prompt: "Deploy {{branch.name}} (PR #{{pr.number}}) to EOD?"
+
+  deploy:
+    type: action
+    uses: env.deploy
+    with: { env: eod }
+    in: [branch]
+    out: deployment
+
+  test:
+    type: action
+    uses: env.test
+    with: { env: eod }
+    in: [deployment]
+    out: test_report
+
+edges:
+  - read_ticket -> plan -> implement -> open_pr -> await_review -> route
+  - { from: route, to: implement, when: changes_requested, max_loops: 3, on_exhausted: needs-review }
+  - { from: route, to: approve, when: approved }
+  - approve -> deploy -> test

@@ -1,0 +1,86 @@
+{
+ "run": {
+  "id": "r-2",
+  "flow": "ticket-to-eod",
+  "flow_hash": "abc",
+  "payload": {
+   "issue_key": "PROJ-42",
+   "note_text": "x_y"
+  },
+  "status": "waiting",
+  "dedupe_key": "jira:PROJ-42",
+  "budget_usd": 5.0,
+  "cost_usd": 0.4213,
+  "error": null,
+  "created_at": 1760000000.5,
+  "updated_at": 1760000100.0,
+  "terminal": false
+ },
+ "executions": [
+  {
+   "id": "x1",
+   "node_id": "plan",
+   "iteration": 1,
+   "key": "plan#1",
+   "status": "done",
+   "attempt": 1,
+   "reclaims": 0,
+   "cost_usd": 0.42,
+   "reason": null,
+   "error": null,
+   "detail": {},
+   "correlation_key": null,
+   "result_ref": "aa",
+   "created_at": 1760000000.6,
+   "started_at": 1760000001.0,
+   "finished_at": 1760000050.0
+  },
+  {
+   "id": "x2",
+   "node_id": "approve_deploy",
+   "iteration": 1,
+   "key": "approve_deploy#1",
+   "status": "waiting",
+   "attempt": 1,
+   "reclaims": 0,
+   "cost_usd": 0.0,
+   "reason": null,
+   "error": null,
+   "detail": {
+    "kind": "gate",
+    "prompt": "Deploy PROJ-42 to staging?",
+    "approvers": [
+     "Huu Lam"
+    ]
+   },
+   "correlation_key": "gate:x2",
+   "result_ref": null,
+   "created_at": 1760000051.0,
+   "started_at": 1760000052.0,
+   "finished_at": null
+  }
+ ],
+ "lineage": {
+  "nodes": []
+ },
+ "effects": [],
+ "costs": [],
+ "pipeline": {
+  "name": "ticket-to-eod.yaml",
+  "model": {
+   "nodes": []
+  }
+ },
+ "next_commands": [
+  {
+   "node": "approve_deploy",
+   "command": "agentline approve r-2",
+   "description": "approve gate approve_deploy#1"
+  },
+  {
+   "node": null,
+   "command": "agentline runs show r-2",
+   "description": "details"
+  }
+ ]
+}

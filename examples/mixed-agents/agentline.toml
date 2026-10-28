@@ -1,0 +1,40 @@
+# Model sources, named models and harnesses for examples/mixed-agents.
+# Keys are never stored here: api_key_env names the env var, and the GUI's Settings → Keys
+# writes values to ~/.agentline/secrets.env (owner-only).
+
+[providers.claude]                 # your Claude Pro/Max login, used by Claude Code only
+type = "anthropic"
+auth = "subscription"
+
+[providers.openrouter]             # free and paid models for small tasks
+type = "openai-compatible"
+base_url = "https://openrouter.ai/api/v1"
+api_key_env = "OPENROUTER_API_KEY"
+
+[providers.homelab]                # a private OpenAI-compatible server (vLLM, Ollama, ...)
+type = "openai-compatible"
+base_url = "http://192.168.1.50:8000/v1"
+
+[models.opus]
+provider = "claude"
+model = "claude-opus-5-5"
+
+[models.free-llama]                # ":free" models cost 0 on OpenRouter
+provider = "openrouter"
+model = "meta-llama/llama-3.3-70b-instruct:free"
+
+[models.local-qwen]
+provider = "homelab"
+model = "qwen3-32b"
+input_usd_per_mtok = 0
+output_usd_per_mtok = 0
+
+[harnesses.claude-code]            # uses its own login; set model = "opus" to pin a model
+kind = "claude-code"
+
+[harnesses.small-tasks]            # a direct model call, no tools
+kind = "builtin"
+model = "free-llama"
+
+[repos.sample]
+remote = "/path/to/your/repo.git"

@@ -1,0 +1,53 @@
+# Claude Code (your Pro login) for the real coding; a free OpenRouter model for small tasks.
+# Harnesses, model sources and named models come from agentline.toml (examples/mixed-agents/
+# agentline.toml), editable in the GUI under Settings.
+version: 1
+name: mixed-agents
+description: Triage with a free model, plan and fix with Claude Code, summarize with a free model
+trigger: { type: manual }
+budget_usd: 2.0
+
+# The "main node": what nodes use unless they say otherwise. A pair: a node that picks
+# another harness gets that harness's own default model.
+defaults: { harness: small-tasks }
+
+nodes:
+  triage:                          # a free model decides which way to go
+    type: router
+    mode: llm
+    model: free-llama
+    prompt: "Is this a bug report or a question? {{payload.text}}"
+
+  answer:                          # inherits defaults: small-tasks (builtin + free-llama)
+    type: agent
+    prompt: "Answer this question briefly: {{payload.text}}"
+    out: answer
+
+  plan:
+    type: agent
+    harness: claude-code           # its own default model, via your Claude login
+    prompt: prompts/plan.md
+    out: plan
+    allowed_tools: [read]
+    workspace: { type: local }
+
+  fix:
+    type: agent
+    harness: claude-code
+    model: opus                    # a named Anthropic model from Settings
+    prompt: prompts/fix.md
+    in: [plan]
+    out: branch
+    allowed_tools: [read, edit, bash]
+    workspace: { type: local }
+
+  summary:                         # back to the free model for the write-up
+    type: agent
+    prompt: "Write a 3-line changelog entry for: {{plan.summary}}"
+    in: [plan]
+    out: changelog
+
+edges:
+  - { from: triage, to: plan, when: bug }
+  - { from: triage, to: answer, when: question }
+  - plan -> fix -> summary

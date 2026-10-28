@@ -1,0 +1,17 @@
+{
+ "version": "0.1.0",
+ "pipelines": [
+  "ticket-to-eod"
+ ],
+ "jira_poll": {
+  "enabled": true,
+  "every_s": 300.0,
+  "pipelines": [
+   "ticket-to-eod"
+  ],
+  "last_poll_at": 1760000000.25,
+  "last_error": "HTTP 401 from Jira",
+  "runs_started": 3
+ },
+ "keys_managed": null
+}

@@ -1,0 +1,35 @@
+# A gatekeeper you talk to takes the request, asks what's missing, then hands it to the pipeline
+# and stays in the run's Conversation (failures, approvals, the result; it can propose a retry).
+#   Start run > helpdesk, then type what you need. Or in a chat app: /run helpdesk <words>
+version: 1
+name: helpdesk
+description: Talk to a gatekeeper; it clarifies the request, hands it off and reports back
+budget_usd: 2.0
+
+nodes:
+  intake:
+    type: chat
+    description: The start point; runs on the agentline host, no tools
+    prompt: prompts/intake.md
+    output_schema: schemas/request.json
+    out: request
+    max_turns: 4
+
+  plan:
+    type: agent
+    prompt: prompts/plan.md
+    in: [request]
+    out: plan
+    output_schema:
+      type: object
+      required: [summary, steps]
+      properties: { summary: { type: string }, steps: { type: array } }
+    allowed_tools: [read]
+
+  approve:
+    type: gate
+    in: [plan]
+    prompt: "Go ahead with this plan? {{plan.summary}}"
+
+edges:
+  - intake -> plan -> approve
