@@ -180,7 +180,7 @@ uv sync                                    # .venv + dev deps (pytest, ruff)
 uv run pytest                              # all tests (~15 s; chaos ones are marked slow)
 uv run pytest -m "not slow"                # fast subset
 uv run ruff check . && uv run ruff format --check .
-git config core.hooksPath .githooks         # once per clone: pre-commit formats staged files + ruff check
+git config core.hooksPath .githooks         # once per clone: pre-commit refuses secrets, formats staged files + ruff check
 uv run python -m demo.chaos --jobs 50      # failure demo; --expect-clean for acceptance
 uv run python -m demo.chaos --target pipeline --jobs 50 --expect-clean
 uv run agentline validate examples/ticket-to-eod/pipeline.yaml

@@ -1,18 +1,53 @@
 #!/bin/sh
-# Formats the staged Python / Markdown files with ruff and stages the result, then refuses the
-# commit if `ruff check` finds problems in them. Enabled with: git config core.hooksPath .githooks
+# Refuses a commit that adds a credential file or a line that looks like a real key, then formats
+# the staged Python / Markdown files with ruff and stages the result, then refuses the commit if
+# `ruff check` finds problems in them. Enabled with: git config core.hooksPath .githooks
 # Skip once with `git commit --no-verify`.
 #
 # A file that also has unstaged changes isn't formatted (staging it again would commit those
 # changes too): the commit stops instead and names it.
 cd "$(git rev-parse --show-toplevel)" || exit 1
 
-staged=$(git diff --cached --name-only --diff-filter=ACMR -- '*.py' '*.pyi' '*.md')
-[ -z "$staged" ] && exit 0
-
 # one path per line; paths may contain spaces
 IFS='
 '
+
+# Only added lines count, so old text never blocks a commit. Names the file, never the matched
+# text. tests/ and macos/Tests/ hold made-up keys on purpose, so their contents aren't scanned.
+SECRET_TEXT='(^|[^A-Za-z0-9_-])sk-[A-Za-z0-9_-]{20,}'
+SECRET_TEXT="$SECRET_TEXT"'|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}'
+SECRET_TEXT="$SECRET_TEXT"'|xox[abprs]-[A-Za-z0-9-]{10,}|xapp-[A-Za-z0-9-]{10,}'
+SECRET_TEXT="$SECRET_TEXT"'|(AKIA|ASIA)[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|ya29\.[0-9A-Za-z_-]{20,}'
+SECRET_TEXT="$SECRET_TEXT"'|glpat-[A-Za-z0-9_-]{10,}|npm_[A-Za-z0-9]{30,}|pypi-[A-Za-z0-9_-]{30,}'
+SECRET_TEXT="$SECRET_TEXT"'|hf_[A-Za-z0-9]{25,}|gsk_[A-Za-z0-9]{20,}|[0-9]{8,10}:AA[A-Za-z0-9_-]{30,}'
+SECRET_TEXT="$SECRET_TEXT"'|eyJ[A-Za-z0-9_-]{15,}\.eyJ[A-Za-z0-9_-]{15,}\.'
+SECRET_TEXT="$SECRET_TEXT"'|-----BEGIN [A-Z ]*PRIVATE KEY-----'
+SECRET_TEXT="$SECRET_TEXT"'|hooks\.slack\.com/services/|discord(app)?\.com/api/webhooks/'
+
+leak=0
+for f in $(git -c core.quotepath=off diff --cached --name-only --diff-filter=ACMR); do
+    case "$f" in
+        *.env.example) ;;
+        .env | .env.* | */.env | */.env.* | *secrets.env | *.pem | *.key | *.p12 | *.pfx | \
+            *id_rsa | *id_ed25519 | *.netrc | *.pypirc)
+            echo "pre-commit: $f is a credential file; unstage it with: git rm --cached -- \"$f\"" >&2
+            leak=1
+            continue
+            ;;
+    esac
+    case "$f" in
+        tests/* | macos/Tests/*) continue ;;
+    esac
+    if git diff --cached -U0 --no-ext-diff -- "$f" | grep '^+' | grep -qE "$SECRET_TEXT"; then
+        echo "pre-commit: $f adds what looks like a real key; move it to secrets.env or an env var" >&2
+        leak=1
+    fi
+done
+[ "$leak" = 1 ] && exit 1
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR -- '*.py' '*.pyi' '*.md')
+[ -z "$staged" ] && exit 0
+
 fail=0
 for f in $staged; do
     if uv run ruff format --force-exclude --check --quiet -- "$f" >/dev/null 2>&1; then

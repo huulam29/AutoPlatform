@@ -1,0 +1,2 @@
+# sh can't run a CRLF script, and Windows clones default to autocrlf
+.githooks/* text eol=lf
