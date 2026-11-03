@@ -61,7 +61,7 @@ ACTION_TYPES = (
     "mcp_import",  # MCP servers found on this machine (Settings > MCP > Detect)
     "chat_app",  # pair | test | unlink a chat app (Settings > Chat)
     "chat_notify",
-    "engine",  # restart | choose_folder (Settings > General; the Mac app only)
+    "engine",  # restart | choose_folder | reveal | export_reports (Settings > General, App reports)
     # pipelines
     "pipeline",
     "export",
@@ -92,7 +92,8 @@ ACTION_TYPES = (
 )
 NOTIFY_KEYS = ("gates", "failures", "done", "questions", "reviews")
 CHAT_APP_OPS = ("pair", "test", "unlink")
-ENGINE_OPS = ("restart", "choose_folder")
+ENGINE_OPS = ("restart", "choose_folder", "reveal", "export_reports")
+REVEAL_TARGETS = ("data", "pipelines", "config")
 _RUN = re.compile(r"^[A-Za-z0-9_-]+$")
 _COMMIT = re.compile(r"^[0-9a-f]{7,40}$")
 _KEY = re.compile(r"^[A-Z_][A-Z0-9_]*$")
@@ -221,7 +222,9 @@ Reply with ONE JSON object and nothing else (no prose around it, no code fence):
     {"type": "chat_app", "platform": "telegram" | "slack" | "discord",
      "op": "pair" | "test" | "unlink"},
     {"type": "chat_notify", "gates": true, "failures": true, "done": false, "questions": true},
-    {"type": "engine", "op": "restart" | "choose_folder"},
+    {"type": "engine", "op": "restart" | "choose_folder" | "reveal" | "export_reports",
+     "path": "<full folder path, choose_folder in a browser>",
+     "target": "data" | "pipelines" | "config" (reveal)},
     {"type": "export", "pipeline": "<pipeline file name>"},
     {"type": "import", "folder": "<optional>", "overwrite": false, "apply_settings": false},
     {"type": "dry_run", "pipeline": "<pipeline file name>", "payload": {...},
@@ -235,8 +238,8 @@ Reply with ONE JSON object and nothing else (no prose around it, no code fence):
      "comment": "..."},
     {"type": "issue", "number": 3, "status": "open" | "in_progress" | "fixed" | "wont_fix",
      "note": "..."},
-    {"type": "incident", "op": "delete", "id": "<crash report id>"} or {"type": "incident",
-     "op": "clear"},
+    {"type": "incident", "op": "delete" | "seen", "id": "<crash report id>"} or
+    {"type": "incident", "op": "clear"},
     {"type": "budget", "monthly_usd": 50 (null removes it)},
     {"type": "triage", "run": "<run id>", "node": "<node id, optional>"},
     {"type": "lesson", "text": "<one line appended to the CHAT INSTRUCTIONS' lessons>"},
@@ -1003,7 +1006,14 @@ def _check_one(a: dict[str, Any], root: Path, cfg: Config | None, live: Live) ->
             return [f"set one or more of {', '.join(NOTIFY_KEYS)} to true or false"]
         return []
     if kind == "engine":
-        return [] if a.get("op") in ENGINE_OPS else [f"op must be {' | '.join(ENGINE_OPS)}"]
+        op = a.get("op")
+        if op not in ENGINE_OPS:
+            return [f"op must be {' | '.join(ENGINE_OPS)}"]
+        if op == "reveal" and a.get("target", "data") not in REVEAL_TARGETS:
+            return [f"target must be {' | '.join(REVEAL_TARGETS)}"]
+        if "path" in a and not (isinstance(a["path"], str) and a["path"].strip()):
+            return ["path must be a full folder path"]
+        return []
     if kind in ("export", "dry_run", "restore", "delete_pipeline"):
         issues = _pipeline_known(a.get("pipeline"), root)
         if issues:
@@ -1070,8 +1080,8 @@ def _check_one(a: dict[str, Any], root: Path, cfg: Config | None, live: Live) ->
     if kind == "incident":
         if a.get("op") == "clear":
             return []
-        if a.get("op") != "delete":
-            return ["op must be delete or clear"]
+        if a.get("op") not in ("delete", "seen"):
+            return ["op must be delete, seen or clear"]
         if live.incidents is not None and a.get("id") not in live.incidents:
             return [f"no crash report {a.get('id')!r}"]
         return []
@@ -1221,7 +1231,9 @@ def title(a: dict[str, Any]) -> str:
         "retry": f"retry run {a.get('run')}" + (f" at {a.get('node')}" if a.get("node") else ""),
         "gate": f"{a.get('decision')} {a.get('node')} in run {a.get('run')}",
         "issue": f"update issue #{a.get('number')}",
-        "incident": "delete crash reports" if a.get("op") == "clear" else "delete a crash report",
+        "incident": {"clear": "delete crash reports", "seen": "mark a crash report seen"}.get(
+            str(a.get("op")), "delete a crash report"
+        ),
         "budget": "set the monthly budget",
         "triage": f"triage run {a.get('run')}" + (f" at {a.get('node')}" if a.get("node") else ""),
         "lesson": "add a lesson to the Chat instructions",
