@@ -516,9 +516,13 @@ class _Validator:
             if cur in seen:
                 continue
             seen.add(cur)
-            for e in g.out_edges(cur):
-                if self.spec.nodes[e.dst].type != "gate":
-                    stack.append(e.dst)
+            # an exhausted loop continues from its source at the on_exhausted node: a path too
+            out = g.out_edges(cur)
+            nxt = [e.dst for e in out]
+            nxt += [e.on_exhausted for e in out if e.loop and e.on_exhausted in g.nodes]
+            for dst in nxt:
+                if self.spec.nodes[dst].type != "gate":
+                    stack.append(dst)
         for n in deploys:
             if n.id in seen:
                 self.add(

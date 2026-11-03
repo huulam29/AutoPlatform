@@ -124,6 +124,7 @@ async def fan_out(
         raise PermanentError(f"for_each {n.for_each!r} is a {type(items).__name__}, not a list")
     ex = ctx.execution
     app = ctx.app
+    clean = app.redactor.redact_value  # task records hold items, results and errors
 
     def db(fn: Callable[[Any], Any]) -> Any:
         with app.ledger.tx() as tx:
@@ -147,7 +148,7 @@ async def fan_out(
             return
         async with sem:
             rec = TaskRecord(ex.id, idx, ex.run_id, ex.node_id, ex.iteration, "running",
-                             attempts=(prev.attempts if prev else 0) + 1, item=item,
+                             attempts=(prev.attempts if prev else 0) + 1, item=clean(item),
                              started_at=time.time())  # fmt: skip
 
             def start(tx: Any) -> None:
@@ -164,7 +165,7 @@ async def fan_out(
             except Exception as e:  # recorded; the node fails after all tasks ran
                 rec.status, rec.error, rec.finished_at = (
                     "failed",
-                    f"{type(e).__name__}: {e}"[:2000],
+                    clean(f"{type(e).__name__}: {e}")[:2000],
                     time.time(),
                 )
 
@@ -175,6 +176,7 @@ async def fan_out(
                 await asyncio.to_thread(db, fail)
                 failed.append((idx, rec.error))
                 return
+            out = clean(out)  # successors see the redacted value anyway
             rec.status, rec.result, rec.finished_at = "done", out, time.time()
 
             def done(tx: Any) -> None:

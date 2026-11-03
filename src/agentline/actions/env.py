@@ -78,8 +78,9 @@ class EnvDeploy:
     Effect strategy: **check** if the env has `check = "<cmd>"`, which must print the
     deployed sha; it matches when it equals the input sha (either may be abbreviated).
     Without a check: **none**, so a crash mid-deploy is unknown → `on_unknown` (default
-    `halt`, never `ai`). The effect is named `deploy#<attempt>`, so a deploy that finished
-    with a non-zero exit is recorded as such and a retry attempt deploys again.
+    `halt`, never `ai`). The effect is named `deploy#<attempt key>`, so a deploy that finished
+    with a non-zero exit is recorded as such and a retry attempt, or a manual retry, deploys
+    again.
 
     Params: `env` (required), `timeout`. Returns `{env, sha, branch, exit_code, at,
     output_tail}`; a non-zero exit raises.
@@ -130,7 +131,7 @@ class EnvDeploy:
 
         ctx.notes["deploy"] = {"env": env, "sha": sha, "branch": target["branch"]}
         res = await ctx.effect(
-            f"deploy#{ctx.attempt}",
+            f"deploy#{ctx.attempt_key}",
             do,
             check=check if check_cmd else None,
             key=call.effect.key,
@@ -138,7 +139,7 @@ class EnvDeploy:
             deploy_class=True,
             description=f"deploy {sha} ({target['branch']}) to {env}",
         )
-        await _audit_deploy(ctx, res, f"deploy#{ctx.attempt}")
+        await _audit_deploy(ctx, res, f"deploy#{ctx.attempt_key}")
         if res["exit_code"] != 0:
             raise CommandFailed(
                 f"deploy to {env} exited with {res['exit_code']}: {res['output_tail'][-500:]}",

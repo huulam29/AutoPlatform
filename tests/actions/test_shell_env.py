@@ -324,3 +324,30 @@ def test_manual_retry_reruns_the_command(h: Harness) -> None:
     asyncio.run(h.app.retry(run))
     h.drain()
     assert h.status(run) == "done"  # not the failure recorded before the retry
+
+
+def test_manual_retry_redeploys(h: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A retry after a failed deploy must deploy again, not reuse the recorded failure."""
+    from agentline.actions import env as env_action
+
+    calls: list[str] = []
+    exit_code = {"deploy": 1}
+
+    async def fake_run(cmd: Any, **kw: Any) -> tuple[int, str, str]:
+        calls.append(str(cmd))
+        return (exit_code["deploy"] if "deploy" in str(cmd) else 0), "", ""
+
+    monkeypatch.setattr(env_action, "run_cmd", fake_run)
+    config = Config.from_dict({"environments": {"eod": {"deploy": "deploy {sha}", "test": "t"}}})
+    h.pipeline(DEPLOY_YAML.replace("out: deployment }", "out: deployment, max_attempts: 1 }"),
+               agent=fixed_branch("f", "abc123"), config=config)  # fmt: skip
+    run = h.submit("ship")
+    ship(h, run)
+    assert h.status(run) == "dead" and calls == ["deploy abc123"]
+    exit_code["deploy"] = 0  # the environment was fixed
+    asyncio.run(h.app.retry(run))
+    h.drain()
+    assert h.status(run) == "done"
+    assert calls == ["deploy abc123", "deploy abc123", "t"]
+    audits = [a.detail for a in h.app.audit_log(run) if a.action == "deploy"]
+    assert [(a["effect"], a["exit_code"]) for a in audits] == [("deploy#1", 1), ("deploy#r1.1", 0)]
