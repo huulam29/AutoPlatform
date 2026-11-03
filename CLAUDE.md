@@ -8,6 +8,89 @@ gate / router / wait nodes). Design, data model, state machines and the decision
 [ARCHITECTURE.md](ARCHITECTURE.md) — read it before changing engine behavior, and add to its
 decision log (§12) when the user decides something.
 
+## Workflow: choose a lane first
+- Before any task that changes the repository, choose a lane with the task triage below.
+  Questions and read-only work need no triage.
+- The constitution is `.specify/memory/constitution.md`; specs are `specs/NNN-name/` (as-built
+  ones: 001-005). Spec Kit skills (`speckit-*`) are in `.claude/skills/`, which is gitignored:
+  in a fresh clone, install them with `specify init` for Claude before Lane 1 or 2 work.
+- In Lanes 1 and 2, do not edit code until the spec, plan and tasks are done. No lane relaxes
+  the constitution, including its durability, secrets and testing rules.
+- The spec folder and the git branch are independent: the branch is still `phase-N`.
+- Record the approach in that phase's `docs/phase-N.md`: `Approach: Spec Kit (specs/NNN-name)`,
+  `Plan mode` or `Direct`, as actually used.
+
+### Lanes
+- **Lane 0 (small):** direct implementation, or plan mode at most. No spec files.
+- **Lane 1 (medium):** `speckit-specify`, `speckit-plan`, `speckit-tasks`, `speckit-implement`.
+  Skip clarify, checklist and analyze unless a trigger below fires. The user approves the spec
+  and the plan before moving on, as the constitution requires.
+- **Lane 2 (large):** `speckit-specify`, `speckit-clarify`, `speckit-plan`, `speckit-checklist`,
+  `speckit-tasks`, `speckit-analyze`, `speckit-implement`. The user approves the spec and the
+  plan before implementation.
+
+### Step 1: gather evidence
+Spend at most about 10 searches or reads. Find the code the task would touch (symbols, routes,
+tables, config keys, pipeline fields), list the files you expect to change, and check them
+against Q1. If you can't find the relevant code, say so, and count it towards Q2.
+
+### Step 2: answer five questions (YES or NO, one line of evidence each)
+- **Q1 Boundary:** the change alters a contract used outside the module you edit: the pipeline
+  YAML format (fields, node types, templates), `agentline.toml` or the secrets file, the ledger
+  schema or `LedgerTx` (both SQLite and Postgres implement it), the HTTP API the web UI and Mac
+  app call, a Chat action (`ACTION_TYPES`), a `NativeBridge` action, or a registry interface
+  (Runner, Action, Waiter, WorkspaceProvider).
+- **Q2 Ambiguity:** at least one open decision would change the implementation and neither the
+  task nor the repository (ARCHITECTURE.md decision log, specs, phase docs) answers it. Style and
+  settled conventions don't count.
+- **Q3 Duration:** more than one session: over 8 files, over 400 lines, or over 3 independently
+  verifiable steps.
+- **Q4 Blast radius:** the change touches durability (scheduler, worker, leases, effect guard,
+  ledger, state transitions), secrets or redaction, webhook or API auth, gates, approvals,
+  deploy-class actions or audit, workspace or container isolation and agent tool limits,
+  budgets, or a migration of user data or settings (`harness_migration.py`, key migration).
+- **Q5 Review cost:** the expected diff is over 150 changed lines or over 3 files.
+
+### Step 3: score
+The number of YES answers: 0-1 is Lane 0, 2-3 is Lane 1, 4-5 is Lane 2.
+
+### Step 4: overrides, in order (the minimums come last, so they win)
+1. Only docs, comments, formatting, dependency patch bumps, or renames inside one module: Lane 0.
+2. A bug fix with a known failing behaviour and a score of 3 or less: Lane 0, with a short
+   written diagnosis instead of spec files (and a test that fails without the fix).
+3. A new user-facing capability (a node type, action, runner, GUI page, CLI command, Chat
+   action): at least Lane 1.
+4. Q1 is YES and the change is a ledger schema change, or removes or renames a pipeline field,
+   config key or API field (old names must still be read): at least Lane 2.
+5. Q1 and Q4 both YES: at least Lane 2.
+
+Never lower a lane because the user seems in a hurry. Only the user naming a lane overrides this.
+
+### Step 5: resolve uncertainty
+- Unsure of a YES or NO: answer YES when the change would be hard to reverse (a ledger
+  migration, a deletion, a published format or API), NO when one commit could revert it.
+- If Q2 would flip the lane and the repository can't resolve it, ask the user one specific
+  question before choosing.
+
+### Step 6: state the result before starting
+```text
+Lane: <0|1|2>
+Score: <n>/5
+Answers:
+- Q1 Boundary: <YES|NO> - <evidence, one line>
+- Q2 Ambiguity: <YES|NO> - <evidence, one line>
+- Q3 Duration: <YES|NO> - <evidence, one line>
+- Q4 Blast radius: <YES|NO> - <evidence, one line>
+- Q5 Review cost: <YES|NO> - <evidence, one line>
+Overrides applied: <none | which>
+Files/modules expected to change: <list>
+Escalation triggers to watch: <what would move this up a lane>
+```
+
+### Step 7: escalate only upward
+Redo Steps 2-4 if you need more than double the estimated files, find a contract you missed, or
+hit an unresolved decision. Tell the user if the lane changed and why. Never move down mid-task.
+
 ## Status
 - Phase 0 (design + failure demo): done, merged to `main`.
 - Phase 1 (durable core): done. `demo.chaos --target durable` is clean over 50 jobs.
@@ -262,7 +345,8 @@ uv run python -m agentline.api.dev --pipelines examples --db /tmp/x.db --port 87
 - Never real credentials in code, tests or the ledger; env vars only.
 - Git: each phase on a branch `phase-N`, merged
   into `main` with `--no-ff` when done (user: "each branch per phase that merge to main"). Commits end with the Co-Authored-By trailer.
-- Work phase by phase; plan first, ask on non-obvious design decisions. Parallel phases run as
+- Work phase by phase; choose a lane first (Workflow, above), ask on non-obvious design
+  decisions. Parallel phases run as
   subagents in worktrees; each writes `docs/phase-N.md` and never edits CLAUDE.md/ARCHITECTURE.md
   (the integrator folds them in on merge).
 
