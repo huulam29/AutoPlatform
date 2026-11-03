@@ -158,6 +158,7 @@ async def fan_out(
             await asyncio.to_thread(db, start)
             tctx = copy.copy(ctx)
             tctx.effect_prefix = f"task{idx}.{rec.attempts}:"  # a rerun really reruns
+            tctx.task = idx
             try:
                 out = await run(tctx, {"item": item, "item_index": idx}, f".task{idx}")
             except asyncio.CancelledError:

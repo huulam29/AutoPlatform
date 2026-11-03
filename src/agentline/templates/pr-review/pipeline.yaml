@@ -40,6 +40,7 @@ nodes:
     with:
       cmd: 'gh pr comment "$PR" --repo "$REPO" --body "$BODY"'
       env: { PR: "{{payload.number}}", REPO: "{{payload.repo}}", BODY: "{{review.body}}" }
+      pass_env: [GH_TOKEN, GITHUB_TOKEN]   # gh's login; nothing else from the host is passed
     out: posted
 
 edges:

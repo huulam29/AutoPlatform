@@ -142,6 +142,20 @@ edges:
     assert issues(src.replace("on_exhausted: deploy", "on_exhausted: ok")) == []
 
 
+def test_timeout_only_on_agents_and_actions() -> None:
+    src = """\
+name: p
+nodes:
+  a: { type: action, uses: env.test, timeout: 30s }
+  ok: { type: gate, prompt: Ship?, timeout: 1h }
+edges:
+  - a -> ok
+"""
+    found = issues(src)
+    assert any("nodes.ok.timeout" in m and "does nothing on gate nodes" in m for m in found)
+    assert not any("nodes.a.timeout" in m for m in found)
+
+
 def test_ai_on_unknown_not_allowed_for_deploy() -> None:
     src = """\
 name: p

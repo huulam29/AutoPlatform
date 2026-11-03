@@ -118,6 +118,7 @@ A person can see each run's executions, costs, audit trail, journal, artifacts a
 - A dedupe key is global across all flows, and resubmitting one returns the existing run whatever its status, including dead or cancelled.
 - A node's timeout counts as an ordinary retryable failure.
 - A resolved `retry` keeps the attempt number. A run-level retry of a dead execution sets the attempt back to 1 and the reclaim count to 0. Both add one to the execution's manual-retry count.
+- Retrying a cancelled run is refused.
 - Run-level retry with no node named retries dead executions only. Naming a node also resolves its needs-review execution with retry.
 - A gate approval picks the only waiting gate, or needs the node named when several are waiting.
 - A delivered event wakes every execution waiting on its key, and is marked consumed by the first of them.
@@ -131,7 +132,7 @@ A person can see each run's executions, costs, audit trail, journal, artifacts a
 
 - **FR-001**: System MUST move an execution between statuses only along the allowed transitions, and reject any other transition.
 - **FR-002**: System MUST derive run status from execution statuses in this order: dead, needs-review, running, ready (running if any execution has started, else pending), failed, waiting, pending (a stuck join, which is needs-review), all cancelled, otherwise done.
-- **FR-003**: System MUST keep a cancelled run cancelled when its status is refreshed. [NEEDS CLARIFICATION: cancelling does not change an execution that is already dead, and a later retry puts it back to ready. The worker then runs it while the run still shows cancelled. Should retry refuse a cancelled run?]
+- **FR-003**: System MUST keep a cancelled run cancelled when its status is refreshed, and MUST refuse to retry a cancelled run, so none of its steps can run again (decision 77; until 2026-11-02 a retry ran a dead step while the run still showed cancelled).
 - **FR-004**: System MUST create a run with one ready execution per start node, or return the existing run when the dedupe key is already known.
 - **FR-005**: A run MUST keep the graph structure it started with across reloads of its pipeline, when that structure is still known. A settings-only change applies to running runs.
 
@@ -150,8 +151,8 @@ A person can see each run's executions, costs, audit trail, journal, artifacts a
 - **FR-013**: System MUST apply these rules to an effect found in the intent state: use the check when there is one, and redo the call if the check finds nothing. With only a key, redo the call. With neither, apply the `on_unknown` policy.
 - **FR-014**: `on_unknown` MUST support `halt` (the default, needs-review), `retry` (redo the call) and `ai` (ask an advisor, whose cost counts against the run). `ai` MUST be refused on a deploy-class effect.
 - **FR-015**: Effect records MUST only be written by the current lease holder.
-- **FR-016**: System MUST let a person settle an unknown effect when resolving: redo it, or mark it done with a verified result.
-- **FR-017**: An effect whose call raises an error stays in the intent state, so the next attempt treats it as unknown. [NEEDS CLARIFICATION: with no key and no check, a call that failed cleanly (the server refused it) goes to needs-review on the next attempt, instead of using the node's remaining retries. A probe confirmed this: one call, then `effect_unknown`. Is a clean failure meant to count as unknown?]
+- **FR-016**: System MUST let a person settle an unknown or failed effect when resolving: redo it, or mark it done with a verified result.
+- **FR-017**: An effect whose call raised MUST be recorded as `failed`, with the error, while a crash leaves it as `intent`. On the next attempt, a failed effect with neither key nor check MUST be decided by the advisor (decision 78): `retry` redoes it, and anything else, an unclear answer or no advisor stops at needs-review with the advice. A deploy-class effect, or a node with `on_unknown: retry`, never asks: the first stops for a person, the second redoes it. (Until 2026-11-02 a clean failure went straight to needs-review.)
 
 **Waiting, routing and loops**
 
@@ -169,7 +170,7 @@ A person can see each run's executions, costs, audit trail, journal, artifacts a
 - **FR-026**: System MUST store artifacts by content hash, inline up to 256 KiB and as files above that, with the file written before its record. Inputs over 64 KiB MUST reach steps as a reference.
 - **FR-027**: System MUST record each execution's reads and writes as lineage, and redact a stored result, error, detail, attachment and audit row before writing it.
 - **FR-028**: System MUST audit approve, reject, resolve, cancel and retry in the same transaction as the action.
-- **FR-029**: System MUST journal execution creation and status changes made through its transition path, along with retries and task events. Claims and cancels are not journaled. [NEEDS CLARIFICATION: decision 48 says every execution status change goes to the journal, but moving to running and moving to cancelled don't. A probe showed `ready -> running` and the cancel missing. Should they be added, or should the decision be narrowed?]
+- **FR-029**: System MUST journal execution creation and every status change, including claims (`claimed -> running`) and cancels (decision 79; until 2026-11-02 those two were missing), along with retries and task events.
 
 ### Key Entities *(include if feature involves data)*
 
@@ -191,6 +192,7 @@ A person can see each run's executions, costs, audit trail, journal, artifacts a
 - **SC-003**: A committed effect is called 0 further times across any number of retries.
 - **SC-004**: A crash uses 0 of a step's attempts, and a crash-looping step stops after at most 21 expiries by default.
 - **SC-005**: Every approve, reject, resolve, cancel and retry leaves exactly 1 audit row, or none if the action failed.
+- **SC-006**: A clean failure of a deploy-class effect asks the advisor 0 times.
 
 ## Assumptions
 
@@ -213,9 +215,9 @@ A person can see each run's executions, costs, audit trail, journal, artifacts a
 
 | Requirement | Evidence |
 |---|---|
-| FR-001 | `src/agentline/states.py:39`, `src/agentline/scheduler.py:497` |
-| FR-002 | `src/agentline/states.py:73`, `src/agentline/scheduler.py:459` |
-| FR-003 | `src/agentline/scheduler.py:354`, `src/agentline/scheduler.py:461`, `src/agentline/app.py:290` |
+| FR-001 | `src/agentline/states.py:39`, `src/agentline/scheduler.py:513` |
+| FR-002 | `src/agentline/states.py:73`, `src/agentline/scheduler.py:475` |
+| FR-003 | `src/agentline/scheduler.py:477`, `src/agentline/app.py:306` |
 | FR-004 | `src/agentline/scheduler.py:67` |
 | FR-005 | `src/agentline/app.py:164`, `src/agentline/app.py:202`, `src/agentline/graph.py:102` |
 | FR-006 | `src/agentline/ledger/sqlite.py:498` |
@@ -223,24 +225,24 @@ A person can see each run's executions, costs, audit trail, journal, artifacts a
 | FR-008 | `src/agentline/scheduler.py:35`, `src/agentline/ledger/sqlite.py:455` |
 | FR-009 | `src/agentline/scheduler.py:260`, `src/agentline/worker.py:84` |
 | FR-010 | `src/agentline/scheduler.py:109`, `src/agentline/ledger/sqlite.py:743` |
-| FR-011 | `src/agentline/scheduler.py:153`, `src/agentline/scheduler.py:455`, `src/agentline/worker.py:156` |
-| FR-012 | `src/agentline/context.py:222`, `src/agentline/ledger/sqlite.py:83` |
-| FR-013 | `src/agentline/context.py:249` |
-| FR-014 | `src/agentline/context.py:239`, `src/agentline/context.py:264` |
-| FR-015 | `src/agentline/context.py:308` |
+| FR-011 | `src/agentline/scheduler.py:153`, `src/agentline/scheduler.py:471`, `src/agentline/worker.py:156` |
+| FR-012 | `src/agentline/context.py:227`, `src/agentline/ledger/sqlite.py:83` |
+| FR-013 | `src/agentline/context.py:256` |
+| FR-014 | `src/agentline/context.py:246`, `src/agentline/context.py:282` |
+| FR-015 | `src/agentline/context.py:341` |
 | FR-016 | `src/agentline/scheduler.py:339` |
-| FR-017 | `src/agentline/context.py:259` |
+| FR-017 | `src/agentline/context.py:263`, `src/agentline/context.py:274`, `src/agentline/advisor.py:70` |
 | FR-018 | `src/agentline/scheduler.py:206`, `src/agentline/scheduler.py:282` |
 | FR-019 | `src/agentline/scheduler.py:226`, `src/agentline/ledger/sqlite.py:662` |
-| FR-020 | `src/agentline/scheduler.py:569`, `src/agentline/graph.py:6` |
-| FR-021 | `src/agentline/scheduler.py:520` |
-| FR-022 | `src/agentline/scheduler.py:126`, `src/agentline/scheduler.py:535` |
-| FR-023 | `src/agentline/context.py:163`, `src/agentline/errors.py:23` |
-| FR-024 | `src/agentline/context.py:205` |
-| FR-025 | `src/agentline/scheduler.py:390` |
-| FR-026 | `src/agentline/artifacts.py:29`, `src/agentline/artifacts.py:238`, `src/agentline/scheduler.py:414` |
-| FR-027 | `src/agentline/scheduler.py:431`, `src/agentline/scheduler.py:118`, `src/agentline/app.py:482` |
-| FR-028 | `src/agentline/app.py:263`, `src/agentline/app.py:342`, `src/agentline/app.py:393` |
-| FR-029 | `src/agentline/scheduler.py:509`, `src/agentline/ledger/sqlite.py:506`, `src/agentline/scheduler.py:355` |
+| FR-020 | `src/agentline/scheduler.py:585`, `src/agentline/graph.py:6` |
+| FR-021 | `src/agentline/scheduler.py:536` |
+| FR-022 | `src/agentline/scheduler.py:126`, `src/agentline/scheduler.py:551` |
+| FR-023 | `src/agentline/context.py:168`, `src/agentline/errors.py:23` |
+| FR-024 | `src/agentline/context.py:210` |
+| FR-025 | `src/agentline/scheduler.py:406` |
+| FR-026 | `src/agentline/artifacts.py:29`, `src/agentline/artifacts.py:238`, `src/agentline/scheduler.py:430` |
+| FR-027 | `src/agentline/scheduler.py:447`, `src/agentline/scheduler.py:118`, `src/agentline/app.py:485` |
+| FR-028 | `src/agentline/app.py:263`, `src/agentline/app.py:345`, `src/agentline/app.py:396` |
+| FR-029 | `src/agentline/scheduler.py:357`, `src/agentline/scheduler.py:367`, `src/agentline/scheduler.py:510` |
 
 Existing tests: `tests/core/test_engine.py`, `tests/core/test_effects.py`, `tests/core/test_graph.py`, `tests/core/test_states.py`, `tests/ledger/test_contract.py`, `tests/artifacts/`.

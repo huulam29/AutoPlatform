@@ -483,6 +483,11 @@ Without it, the build runs on demand before the first container node.
 in the ledger; agent containers get egress only to their LLM API (enforced by a docker network +
 egress proxy in Phase 3); no docker socket inside containers.
 
+*As built*: the egress proxy was never built. Containers use bridge networking by default (the
+`network` option changes it), so an agent can reach any host; the user accepted that until egress
+control exists (decision 85). Image digests aren't pinned either: the reference and its source
+are recorded.
+
 ## 11.2 As built (Phases 3–5)
 
 Detailed as-built notes, contracts and known limits live next to the code's phase docs:
@@ -591,6 +596,15 @@ expects, and nothing else from the host env leaks. The `llm` runner calls OpenAI
 | 74 | Settings show only what is usable (VS Code Language Models style, layout A): one **Models** page replaces Model sources + Models + provider keys: a group per connected source, "Needs attention" for sources the user set up that stopped working, **Add models** (source → connect → choose) as the only place unconnected sources appear, and an **eye** that hides a model from every picker without removing it (`hidden`, an override table for built-ins). The Keys tab goes: keys live with their feature, the rest under General → Other keys. Add harness lists installed programs; missing ones sit collapsed with their install command. A keyless built-in local source (Ollama) counts as connected only while it answers | user | Phase 46 |
 | 75 | Chat conversations are kept on the server, one JSON file each under `$AGENTLINE_HOME/assistant/conversations/` (not the ledger: the Chat is not a run; not localStorage: the Mac app loses it), and the Chat panel has a History view. A conversation with no activity (message or Unarchive) for more than 7 days is **archived automatically**: hidden from the main list, still searchable and openable, with Unarchive; one can also be archived by hand. Conversations are never deleted. The Chat can archive/unarchive (`conversation` action) | user | Phase 48 |
 | 76 | A pipeline names its **start point** (`start: {node, input, template}`): the node that takes a run's input as **json** (the Start run popup is pre-filled with `template`, by default the `{{payload.…}}` fields the templates read), **text** (`{"text": …}`; an agent start node without `{{payload.text}}` gets it as `## Input`) or **chat**. Chat is a new node type `chat`, the **gatekeeper**: the only start node, on the host (no workspace, no edit/bash), harness + model like an agent. It converses through a **resumable wait** (`ctx.wait(key, resume=True)`: the event moves the execution WAITING → READY to run again instead of becoming its result) until it hands off (`output` must match `output_schema`) or cancels. The conversation is the run's thread (`run_messages` in the ledger; message 0 is the payload). It **stays for the whole run**: the loop in `serve` posts notes for failures, waiting gates and the end, the gatekeeper explains them and answers questions with the run's live state, and proposes approve / reject / retry / cancel as **cards that run only after a Confirm** (audited `via`). Talk to it in the Run view's Conversation and in linked chat apps (reply to its message or `/say`). Turn costs count against the run. See `docs/phase-52.md` | user | Phase 52 |
+| 77 | Retrying a cancelled run is refused (a retry used to run its dead steps while it still showed cancelled) | user | Phase 53 |
+| 78 | An effect whose call raised is recorded as `failed`, not left as an unknown intent. With neither key nor check, the next attempt asks the **effect advisor** (`agentline.advisor`: the Chat's harness and model) whether repeating it is safe: `retry` redoes it, anything else stops at needs-review. Deploy-class effects never ask (a person decides), `on_unknown: retry` redoes without asking, and no advisor means needs-review. `serve` installs the advisor, which also makes `on_unknown: ai` (#3) work; `AGENTLINE_ADVISOR=off` in tests. Amends #3 | user | Phase 53 |
+| 79 | The journal records claims (`claimed -> running`) and cancels too, so it has every execution status change (#48) | user | Phase 53 |
+| 80 | `timeout` is refused on gate, wait, router and chat nodes, where it did nothing; it stays on agents and actions | user | Phase 53 |
+| 81 | `shell.run`, `env.deploy` and `env.test` commands get only PATH/HOME/locale basics plus the host variables they declare (`with: { pass_env }`, `[environments.<env>] pass_env`), not the whole host environment; `git push` also gets the SSH agent variables | user | Phase 53 |
+| 82 | Off localhost the API always needs a bearer token: `serve` on a non-loopback address with none set creates `AGENTLINE_API_TOKEN` in the secrets file (never printed); the web UI asks for it | user | Phase 53 |
+| 83 | When several Jira poll pipelines match one assignment, only the first starts a run (the poll dedupe key has no pipeline name, unlike the webhook's): intended | user | Phase 53 |
+| 84 | Each task of a `for_each` agent node with a workspace gets its own worktree, branch (`agentline/<run>-task<n>`) and container; operations on one mirror take turns | user | Phase 53 |
+| 85 | Containers keep bridge networking (any host is reachable) until egress control is built; §11.1 says so | user | Phase 53 |
 
 ## 13. Open questions
 

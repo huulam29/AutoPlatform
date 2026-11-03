@@ -60,7 +60,7 @@ class Effect:
     node_id: str
     iteration: int
     name: str
-    status: str  # intent | committed | redo
+    status: str  # intent | committed | failed (the call raised) | redo
     idempotency_key: str | None = None
     result: Any = None
     advice: dict[str, Any] | None = None

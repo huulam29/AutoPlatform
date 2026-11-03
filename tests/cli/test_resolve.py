@@ -70,12 +70,12 @@ def test_resolve_retry_and_errors(cli: Cli) -> None:
 def test_unknown_effect_resolved_as_done(cli: Cli) -> None:
     cli.write_pipeline("flaky", FLAKY)
     run_id = cli.submit("flaky")
-    cli.ok("worker", "--until-idle")  # attempt 1 crashes after the intent; attempt 2: unknown
+    cli.ok("worker", "--until-idle")  # attempt 1 fails in the call; attempt 2: no advisor
     v = cli.json("runs", "show", run_id)
     ex = v["executions"][0]
     assert ex["status"] == "needs-review" and ex["reason"] == "effect_unknown"
     assert ex["detail"]["effect"] == "create_thing"
-    assert v["effects"][0]["status"] == "intent"
+    assert v["effects"][0]["status"] == "failed"  # the call raised (decision 78)
     assert "--effect redo|done" in v["next"][0]
     code, _, err = cli.run("resolve", run_id, "--action", "retry", "--effect-result", "{}")
     assert code == 1 and "--effect-result goes with --effect done" in err

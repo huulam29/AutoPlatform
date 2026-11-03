@@ -29,7 +29,7 @@ from agentline.config import Config, RepoConfig
 from agentline.registry import Workspace, WorkspaceSpec
 from agentline.runners.common import GIT_IDENTITY, Executor, base_env, declared_env, run_process
 from agentline.workspaces import git
-from agentline.workspaces.base import GitWorkspace, checkout
+from agentline.workspaces.base import GitWorkspace, checkout, task_suffix
 from agentline.workspaces.images import ImageChoice, build_image, resolve_image
 
 if TYPE_CHECKING:
@@ -160,7 +160,7 @@ class ContainerProvider:
             if choice.needs_build:
                 note.update(await build_image(choice, docker=docker, executor=run))
             ctx.notes["image"] = note
-            name = f"agentline-{ctx.execution.id}"
+            name = f"agentline-{ctx.execution.id}{task_suffix(ctx)}"
             await run([docker, "rm", "-f", name], env=base_env(), timeout=60)  # crashed retry
             secret_names = [str(s) for s in spec.options.get("secrets") or ()]
             argv = run_argv(

@@ -137,14 +137,14 @@ Each runner reports what it spent, even when the call failed, and the node's rem
 - **FR-001**: System MUST select the repository from the node, else the only configured one, else the payload's `repo`, and only ever check out a repository configured in `agentline.toml`.
 - **FR-002**: System MUST keep one bare mirror per repository, created atomically, and fetched before use.
 - **FR-003**: System MUST give each node execution a worktree at a path named by the execution, on `agentline/<run id>`, new from the base branch the first time and continuing the branch after that.
-- **FR-004**: `for_each` agent nodes with a workspace share that one path. [NEEDS CLARIFICATION: the worktree path and container name come from the execution id, so parallel tasks of one node collide. The validator allows it. A probe with three parallel tasks had one finish, and two fail once the shared worktree was removed. Should the validator refuse it, should tasks run one at a time, or should each task get its own checkout?]
+- **FR-004**: Each task of a `for_each` agent node with a workspace MUST get its own worktree (`<execution id>-task<n>`), branch (`agentline/<run id>-task<n>`) and container, and later iterations continue each task's branch. Its workspace notes go under `workspaces.<n>` and its diff is attached as `diff.task<n>`. Operations on one mirror take turns, so parallel tasks never race (decision 84; until 2026-11-02 tasks shared one path and collided).
 - **FR-005**: On finishing, System MUST commit leftovers (unless `autocommit` is false), attach the diff against the base commit, and produce the branch artifact: name, commit, base, start commit, repository, mirror, worktree, whether it changed, and whether it auto-committed.
 - **FR-006**: System MUST remove the worktree afterwards unless `keep_worktree` is set, and keep the branch.
 
 **Containers**
 
 - **FR-007**: A container MUST run with `--cap-drop ALL`, `no-new-privileges`, `--user` set to the host's uid and gid by default, and only the worktree and mirror mounted.
-- **FR-008**: Network MUST default to `bridge`, set by the `network` option. [NEEDS CLARIFICATION: `ARCHITECTURE.md` §11.1 says containers get egress only to their LLM API, and no package-registry access. The code gives normal bridge networking and calls the restriction future work. So an agent can reach any host and install tools at run time. Is this acceptable until egress control is built, and should the architecture doc say so?]
+- **FR-008**: Network MUST default to `bridge`, set by the `network` option. Containers can reach any host, and restricting egress to the model API is future work. The user accepted this, and `ARCHITECTURE.md` §11.1 now says so (decision 85).
 - **FR-009**: Every command MUST run through `docker exec`, with environment names on the command line and the values passed through the docker CLI's own environment.
 - **FR-010**: The container MUST be removed in all cases, and any leftover of the same name removed first.
 - **FR-011**: `docker_args` MAY add arguments to `docker run`, and the `user` option MAY change the user.
@@ -197,7 +197,7 @@ Each runner reports what it spent, even when the call failed, and the node's rem
 ## Differences From the Documentation
 
 - `ARCHITECTURE.md` §11.1 describes `image.propose` as a built-in agent that runs automatically. The code uses a deterministic function when the node stops.
-- §11.1's egress proxy does not exist. See FR-008.
+- §11.1's egress proxy does not exist, and §11.1 now says so (FR-008).
 - §11.1 says the approved proposal retries the node as `attempt + 1`. The code resolves it with retry, which keeps the attempt number.
 - §11.1 says the resolved image digest is recorded so a retry uses the same image, and that images are pinned to digests in the ledger. The code records the image reference and its source, with no digest.
 
@@ -205,12 +205,12 @@ Each runner reports what it spent, even when the call failed, and the node's rem
 
 | Requirement | Evidence |
 |---|---|
-| FR-001 | `src/agentline/workspaces/base.py:22` |
-| FR-002 | `src/agentline/workspaces/git.py:54` |
-| FR-003 | `src/agentline/workspaces/base.py:52`, `src/agentline/workspaces/git.py:98` |
-| FR-004 | `src/agentline/workspaces/base.py:52`, `src/agentline/workspaces/container.py:163`, `src/agentline/pipeline/compile.py:271` |
-| FR-005 | `src/agentline/workspaces/base.py:86`, `src/agentline/workspaces/__init__.py:20` |
-| FR-006 | `src/agentline/workspaces/base.py:65`, `src/agentline/workspaces/git.py:141` |
+| FR-001 | `src/agentline/workspaces/base.py:27` |
+| FR-002 | `src/agentline/workspaces/git.py:58` |
+| FR-003 | `src/agentline/workspaces/base.py:58`, `src/agentline/workspaces/git.py:105` |
+| FR-004 | `src/agentline/workspaces/base.py:22`, `src/agentline/workspaces/git.py:89`, `src/agentline/workspaces/container.py:163`, `src/agentline/pipeline/compile.py:161` |
+| FR-005 | `src/agentline/workspaces/base.py:97`, `src/agentline/workspaces/__init__.py:20` |
+| FR-006 | `src/agentline/workspaces/base.py:76`, `src/agentline/workspaces/git.py:152` |
 | FR-007 | `src/agentline/workspaces/container.py:86`, `src/agentline/workspaces/container.py:172` |
 | FR-008 | `src/agentline/workspaces/container.py:11`, `src/agentline/workspaces/container.py:173` |
 | FR-009 | `src/agentline/workspaces/container.py:65` |
@@ -219,17 +219,17 @@ Each runner reports what it spent, even when the call failed, and the node's rem
 | FR-012 | `src/agentline/workspaces/images.py:152` |
 | FR-013 | `src/agentline/workspaces/images.py:103`, `src/agentline/workspaces/images.py:189` |
 | FR-014 | `src/agentline/workspaces/images.py:265`, `src/agentline/workspaces/images.py:314` |
-| FR-015 | `src/agentline/cli/commands.py:450`, `src/agentline/cli/proposal.py:116` |
+| FR-015 | `src/agentline/cli/commands.py:463`, `src/agentline/cli/proposal.py:116` |
 | FR-016 | `src/agentline/runners/__init__.py:20` |
 | FR-017 | `src/agentline/runners/claude_code.py:39`, `src/agentline/runners/claude_code.py:63` |
 | FR-018 | `src/agentline/runners/codex.py:56`, `src/agentline/runners/codex.py:176` |
 | FR-019 | `src/agentline/runners/aider.py:81`, `src/agentline/runners/aider.py:116` |
 | FR-020 | `src/agentline/runners/llm.py:38`, `src/agentline/runners/llm.py:132` |
 | FR-021 | `src/agentline/runners/shell.py:37`, `src/agentline/runners/python.py:40` |
-| FR-022 | `src/agentline/runners/common.py:40`, `src/agentline/pipeline/compile.py:296`, `src/agentline/runners/claude_code.py:143` |
-| FR-023 | `src/agentline/runners/common.py:170`, `src/agentline/pipeline/compile.py:310` |
-| FR-024 | `src/agentline/runners/common.py:113`, `src/agentline/actions/_util.py:72` |
+| FR-022 | `src/agentline/runners/common.py:40`, `src/agentline/pipeline/compile.py:297`, `src/agentline/runners/claude_code.py:143` |
+| FR-023 | `src/agentline/runners/common.py:170`, `src/agentline/pipeline/compile.py:311` |
+| FR-024 | `src/agentline/runners/common.py:113`, `src/agentline/actions/_util.py:95` |
 
-Edge-case evidence: `src/agentline/runners/agent_cli.py:70` (missing CLI), `src/agentline/runners/claude_code.py:190` (budget after the run), `src/agentline/workspaces/git.py:26` (mirror refspecs), `src/agentline/cli/proposal.py:85` (proposals that can't apply), `src/agentline/pipeline/compile.py:302` and `src/agentline/costs.py:63` (cost label).
+Edge-case evidence: `src/agentline/runners/agent_cli.py:70` (missing CLI), `src/agentline/runners/claude_code.py:190` (budget after the run), `src/agentline/workspaces/git.py:30` (mirror refspecs), `src/agentline/cli/proposal.py:85` (proposals that can't apply), `src/agentline/pipeline/compile.py:303` and `src/agentline/costs.py:63` (cost label).
 
 Existing tests: `tests/workspaces/`, `tests/runners/`, `tests/safety/test_budgets_tools.py`, `tests/cli/test_proposal.py`, `tests/ai/test_agent_env.py`, `tests/smoke/test_smoke.py` (needs `AGENTLINE_SMOKE=1`, see `docs/smoke.md`).

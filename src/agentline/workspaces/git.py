@@ -3,6 +3,10 @@
 Layout under `$AGENTLINE_HOME` (default `~/.agentline`):
 - `mirrors/<repo>.git`   `git clone --mirror` of the remote, fetched before each use.
 - `worktrees/<repo>/<execution id>`   one worktree per node execution, removed afterwards.
+  A `for_each` task gets its own: `<execution id>-task<n>`, on branch `agentline/<run>-task<n>`.
+
+Every mirror operation (clone, fetch, worktree add and remove) holds that mirror's lock, so
+parallel tasks don't race for git's own lock files.
 
 After the mirror clone the mirror is re-configured so it's safe to commit into:
 `remote.origin.mirror` is unset (a plain `git push origin <branch>` must never mirror-push
@@ -55,8 +59,7 @@ async def ensure_mirror(repo: RepoConfig, root: Path | None = None) -> Path:
     """Clone the repo as a mirror on first use, else fetch it. Returns the mirror path."""
     root = root or agentline_home() / "mirrors"
     path = root / f"{safe_name(repo.name)}.git"
-    lock = _locks.setdefault(str(path), asyncio.Lock())
-    async with lock:
+    async with _lock(path):
         if not (path / "HEAD").exists():
             root.mkdir(parents=True, exist_ok=True)
             tmp = path.with_name(path.name + ".tmp")
@@ -83,8 +86,12 @@ class Worktree:
     created_branch: bool
 
 
-def branch_for(run_id: str) -> str:
-    return f"{BRANCH_PREFIX}{run_id}"
+def branch_for(run_id: str, task: int | None = None) -> str:
+    return f"{BRANCH_PREFIX}{run_id}" + ("" if task is None else f"-task{task}")
+
+
+def _lock(mirror: Path) -> asyncio.Lock:
+    return _locks.setdefault(str(mirror), asyncio.Lock())
 
 
 async def ref_sha(mirror: Path, ref: str) -> str | None:
@@ -96,11 +103,15 @@ async def ref_sha(mirror: Path, ref: str) -> str | None:
 
 
 async def create_worktree(
-    mirror: Path, path: Path, run_id: str, base_ref: str = "main"
+    mirror: Path, path: Path, run_id: str, base_ref: str = "main", task: int | None = None
 ) -> Worktree:
-    """Worktree on `agentline/<run_id>`: new from `base_ref` the first time, else continuing
-    the branch from its current head (iteration 2+, or a retry)."""
-    branch = branch_for(run_id)
+    """Worktree on `agentline/<run_id>` (or a task's own branch): new from `base_ref` the
+    first time, else continuing the branch from its current head (iteration 2+, or a retry)."""
+    async with _lock(mirror):
+        return await _create_worktree(mirror, path, branch_for(run_id, task), base_ref)
+
+
+async def _create_worktree(mirror: Path, path: Path, branch: str, base_ref: str) -> Worktree:
     await git("worktree", "prune", cwd=mirror)
     await _remove_stale(mirror, branch)
     if path.exists():
@@ -140,12 +151,13 @@ async def diff(path: Path, base: str, head: str) -> str:
 
 async def remove_worktree(wt: Worktree) -> None:
     """Remove the checkout, keep the branch (it holds the agent's commits)."""
-    try:
-        await git("worktree", "remove", "--force", str(wt.path), cwd=wt.mirror)
-    except GitError:
-        if wt.path.exists():
-            await _rmtree(wt.path)
-        await git("worktree", "prune", cwd=wt.mirror)
+    async with _lock(wt.mirror):
+        try:
+            await git("worktree", "remove", "--force", str(wt.path), cwd=wt.mirror)
+        except GitError:
+            if wt.path.exists():
+                await _rmtree(wt.path)
+            await git("worktree", "prune", cwd=wt.mirror)
 
 
 async def _remove_stale(mirror: Path, branch: str) -> None:

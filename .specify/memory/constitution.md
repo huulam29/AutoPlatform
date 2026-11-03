@@ -1,7 +1,9 @@
 <!--
 Sync Impact Report
-- Version change: unversioned template → 1.0.0 (first ratified version)
-- Modified principles: none, all new
+- Version change: 1.0.0 → 1.1.0 (MINOR: Principles I and III widened by user decisions 78 and
+  81 in ARCHITECTURE.md; 1.0.0 was the first version, the same day)
+- Modified principles: I. Durable by Default (a call that failed cleanly is decided by the effect
+  advisor), III. Secrets Stay Out of Everything (host commands get declared secrets only)
 - Added sections: Core Principles I to VII, Security and Credential Constraints, Development
   Workflow, Governance
 - Removed sections: none
@@ -11,10 +13,9 @@ Sync Impact Report
   Git Bash on Windows rule. Its secrets rules are kept and widened in Principle III.
 - Templates: read at runtime, no changes required
 - Deferred TODOs: none
-- Conflicts with the code found by the first specs: three were fixed on 2026-11-02 (the gate check
-  and `on_exhausted`, `for_each` task redaction, `env.deploy` manual retries). Still open:
-  - Security and Credential Constraints: `serve` accepts a non-local bind with no bearer token
-    (specs/003-secret-handling, FR-015).
+- Conflicts with the code found by the first specs: all fixed on 2026-11-02 (the gate check and
+  `on_exhausted`, `for_each` task redaction, `env.deploy` manual retries, and an off-localhost
+  `serve` with no token, which now creates one). None open.
 - Pending: user review. Dates below are the date of this first draft.
 -->
 
@@ -34,6 +35,9 @@ Sync Impact Report
   call. Reading is not a side effect.
 - The engine MUST NOT claim exactly-once delivery. Where a crash leaves an effect's outcome unknown,
   it MUST apply the `on_unknown` policy, and the default MUST stop for a person.
+- A call that failed cleanly, with neither key nor check, MAY be repeated only when the effect
+  advisor says it is safe. A deploy-class effect, an unclear answer, or no advisor MUST stop for a
+  person.
 
 Rationale: delivery pipelines push code and deploy it. A repeated or lost step there costs more
 than a pause, so durability cannot depend on nothing going wrong.
@@ -60,8 +64,8 @@ irreversible steps stay in human hands and leave a record.
   MUST be redacted before it is written.
 - The API MUST treat secrets as write-only: it may set, delete and report whether one is set, and
   MUST NOT return a value.
-- An agent or container MUST receive only the secrets declared for it, by name, and never through
-  command-line arguments.
+- An agent, container or host command MUST receive only the secrets declared for it, by name, and
+  never through command-line arguments.
 - Secrets MUST NOT be accepted over chat links or sent to a model.
 - Redaction guarantees MUST be tested by attempting to violate them, using fake secret values.
 
@@ -159,4 +163,4 @@ reason and user approval. Versions follow semantic versioning: MAJOR for removin
 principle, MINOR for adding or materially expanding one, PATCH for clarifications. Every plan and
 review MUST verify compliance, and Principles I and III have no exceptions.
 
-**Version**: 1.0.0 | **Ratified**: 2026-11-02 | **Last Amended**: 2026-11-02
+**Version**: 1.1.0 | **Ratified**: 2026-11-02 | **Last Amended**: 2026-11-02

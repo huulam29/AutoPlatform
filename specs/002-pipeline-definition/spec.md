@@ -146,7 +146,7 @@ A prompt can use `{{artifact.field}}` and an optional block, and an agent's outp
 - **FR-019**: Every template reference MUST be a declared input or a built-in.
 - **FR-020**: Compiling MUST produce one generic handler per node type, and validate the resulting graph.
 - **FR-021**: An agent with an output schema MUST get one repair attempt, then fail as a retryable error.
-- **FR-022**: A node's `timeout` MUST apply to actions through the worker, and to agents through the runner. [NEEDS CLARIFICATION: `timeout` is accepted on every node type, but gates, waits, routers and chat nodes compile with no timeout, so it does nothing there. `ARCHITECTURE.md` says it is recorded for gates and waits, but it isn't. Should the validator refuse it, or should it be enforced?]
+- **FR-022**: `timeout` MUST be refused on gate, wait, router and chat nodes, where it would do nothing (decision 80; until 2026-11-02 it was accepted and ignored). It applies to actions through the worker and to agents through the runner.
 - **FR-023**: A `for_each` node MUST run one task per item, at most `max_parallel` (default 4) at a time, recording each task.
 - **FR-024**: A start node MUST take input as JSON (the default) or text, and a chat start node as chat. `start.template` applies to JSON only.
 
@@ -177,18 +177,18 @@ A prompt can use `{{artifact.field}}` and an optional block, and an agent's outp
 ## Differences From the Documentation
 
 - `ARCHITECTURE.md` §9 says the schema validator covers a subset that excludes `maxItems` and `minLength`. The code supports both.
-- §9 says gate and wait `timeout` is recorded. See FR-022.
+- §9 says gate and wait `timeout` is recorded. It is refused instead (FR-022).
 - §9 doesn't describe `chat`, `harness`, `for_each`, `skills`, `mcp` or `start`, which came later and are recorded in the decision log.
 
 ## Code References
 
 | Requirement | Evidence |
 |---|---|
-| FR-001 | `src/agentline/pipeline/spec.py:19`, `src/agentline/pipeline/spec.py:63`, `src/agentline/pipeline/spec.py:273`, `src/agentline/pipeline/spec.py:499` |
-| FR-002 | `src/agentline/pipeline/spec.py:21`, `src/agentline/pipeline/spec.py:55`, `src/agentline/pipeline/spec.py:610` |
-| FR-003 | `src/agentline/pipeline/spec.py:88` |
-| FR-004 | `src/agentline/pipeline/spec.py:317`, `src/agentline/agents.py:273` |
-| FR-005 | `src/agentline/pipeline/spec.py:582` |
+| FR-001 | `src/agentline/pipeline/spec.py:19`, `src/agentline/pipeline/spec.py:65`, `src/agentline/pipeline/spec.py:275`, `src/agentline/pipeline/spec.py:501` |
+| FR-002 | `src/agentline/pipeline/spec.py:22`, `src/agentline/pipeline/spec.py:57`, `src/agentline/pipeline/spec.py:619` |
+| FR-003 | `src/agentline/pipeline/spec.py:90` |
+| FR-004 | `src/agentline/pipeline/spec.py:319`, `src/agentline/agents.py:273` |
+| FR-005 | `src/agentline/pipeline/spec.py:591` |
 | FR-006 | `src/agentline/pipeline/validate.py:59`, `src/agentline/pipeline/validate.py:109` |
 | FR-007 | `src/agentline/pipeline/validate.py:119`, `src/agentline/pipeline/validate.py:154` |
 | FR-008 | `src/agentline/pipeline/validate.py:166` |
@@ -196,19 +196,19 @@ A prompt can use `{{artifact.field}}` and an optional block, and an agent's outp
 | FR-010 | `src/agentline/pipeline/validate.py:285` |
 | FR-011 | `src/agentline/pipeline/validate.py:193` |
 | FR-012 | `src/agentline/pipeline/validate.py:507` |
-| FR-013 | `src/agentline/pipeline/validate.py:478`, `src/agentline/context.py:239` |
+| FR-013 | `src/agentline/pipeline/validate.py:478`, `src/agentline/context.py:246` |
 | FR-014 | `src/agentline/pipeline/validate.py:428`, `src/agentline/pipeline/validate.py:436` |
 | FR-015 | `src/agentline/pipeline/validate.py:492` |
 | FR-016 | `src/agentline/pipeline/validate.py:335` |
 | FR-017 | `src/agentline/pipeline/validate.py:315`, `src/agentline/pipeline/validate.py:456` |
-| FR-018 | `src/agentline/pipeline/template.py:20`, `src/agentline/pipeline/compile.py:41`, `src/agentline/pipeline/compile.py:345`, `src/agentline/pipeline/validate.py:15` |
+| FR-018 | `src/agentline/pipeline/template.py:20`, `src/agentline/pipeline/compile.py:41`, `src/agentline/pipeline/compile.py:346`, `src/agentline/pipeline/validate.py:15` |
 | FR-019 | `src/agentline/pipeline/validate.py:404`, `src/agentline/pipeline/validate.py:421` |
-| FR-020 | `src/agentline/pipeline/compile.py:499` |
-| FR-021 | `src/agentline/pipeline/compile.py:274`, `src/agentline/pipeline/compile.py:320`, `src/agentline/pipeline/schema.py:28` |
-| FR-022 | `src/agentline/pipeline/spec.py:20`, `src/agentline/pipeline/compile.py:506`, `src/agentline/worker.py:197` |
+| FR-020 | `src/agentline/pipeline/compile.py:500` |
+| FR-021 | `src/agentline/pipeline/compile.py:275`, `src/agentline/pipeline/compile.py:321`, `src/agentline/pipeline/schema.py:28` |
+| FR-022 | `src/agentline/pipeline/spec.py:21`, `src/agentline/pipeline/spec.py:503`, `src/agentline/pipeline/compile.py:507`, `src/agentline/worker.py:197` |
 | FR-023 | `src/agentline/pipeline/compile.py:104` |
 | FR-024 | `src/agentline/pipeline/start.py:35`, `src/agentline/pipeline/validate.py:222` |
 
-Edge-case evidence: `src/agentline/pipeline/compile.py:449` (switch), `src/agentline/pipeline/compile.py:392` (LLM router), `src/agentline/pipeline/files.py:13` (file discovery), `src/agentline/pipeline/spec.py:451` (poll interval), `src/agentline/pipeline/validate.py:408` (optional inputs).
+Edge-case evidence: `src/agentline/pipeline/compile.py:450` (switch), `src/agentline/pipeline/compile.py:393` (LLM router), `src/agentline/pipeline/files.py:13` (file discovery), `src/agentline/pipeline/spec.py:453` (poll interval), `src/agentline/pipeline/validate.py:408` (optional inputs).
 
 Existing tests: `tests/pipeline/test_spec.py`, `tests/pipeline/test_run.py`, `tests/pipeline/test_for_each.py`, `tests/core/test_pipeline_files.py`, `tests/schedules/test_spec.py`.

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from agentline.actions._util import require, run_cmd, tail
+from agentline.actions._util import pass_env_names, require, run_cmd, tail
 from agentline.context import StepContext
 from agentline.errors import AgentlineError, PermanentError
 from agentline.registry import ActionCall
@@ -34,7 +34,8 @@ class ShellRun:
     leaves an intent whose outcome is unknown → `on_unknown` (default `halt`). With
     `with: { idempotent: true }` the default becomes `on_unknown: retry`.
 
-    Params: `cmd`, `cwd`, `env` (merged over the host env), `timeout` (seconds),
+    Params: `cmd`, `cwd`, `env` (values to set), `pass_env` (host variables the command may
+    see, by name: only these and PATH/HOME/locale basics reach it), `timeout` (seconds),
     `idempotent`, `permanent` (a non-zero exit fails without retries), `output: json` (stdout
     is one JSON value: a dict is merged into the result, anything else goes under `value`).
     The command gets `AGENTLINE_INPUTS`: the path of a JSON file with the node's inputs.
@@ -50,6 +51,7 @@ class ShellRun:
         if not isinstance(cmd, (str, list)):
             raise PermanentError("shell.run: `cmd` must be a string or a list of strings")
         env = {str(k): str(v) for k, v in (p.get("env") or {}).items()}
+        pass_env = pass_env_names(p.get("pass_env"), self.name)
         timeout = float(p["timeout"]) if p.get("timeout") is not None else None
         default = "retry" if p.get("idempotent") else "halt"
 
@@ -65,6 +67,7 @@ class ShellRun:
                     cmd if isinstance(cmd, str) else [str(c) for c in cmd],
                     cwd=p.get("cwd"),
                     env={**env, "AGENTLINE_INPUTS": f.name},
+                    pass_env=pass_env,
                     timeout=timeout,
                 )
             finally:

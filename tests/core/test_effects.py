@@ -304,3 +304,73 @@ def test_lost_lease_cancels_handler_and_its_commit_is_rejected(app: App) -> None
 
     asyncio.run(go())
     assert finished == []  # the stale handler was cancelled before finishing
+
+
+def _failing_send_flow(app: App, calls: list[int], *, deploy_class: bool = False) -> None:
+    """A step whose effect (no key, no check) fails cleanly on its first call."""
+    flow = app.flow("f")
+
+    @flow.step("send", max_attempts=3)
+    async def send(ctx: StepContext, inputs: dict[str, Any]) -> dict[str, Any]:
+        async def do() -> dict[str, Any]:
+            calls.append(ctx.attempt)
+            if len(calls) == 1:
+                raise ConnectionError("503 from the server")
+            return {"sent": True}
+
+        return await ctx.effect("send", do, deploy_class=deploy_class, description="send it")
+
+
+@pytest.mark.parametrize(
+    ("decision", "status", "n_calls"), [("retry", "done", 2), ("halt", "needs-review", 1)]
+)
+def test_clean_failure_lets_the_advisor_decide(
+    tmp_path: Any, decision: str, status: str, n_calls: int
+) -> None:
+    from agentline import SqliteLedger
+
+    asked: list[AdviceRequest] = []
+
+    async def advisor(req: AdviceRequest) -> Advice:
+        asked.append(req)
+        return Advice(decision, "a refused request didn't send anything")  # type: ignore[arg-type]
+
+    app = App(SqliteLedger(tmp_path / "l.db"), advisor=advisor, backoff_base=0)
+    calls: list[int] = []
+    _failing_send_flow(app, calls)
+    sub = app.submit_sync("f", {})
+    drain(app)
+    assert app.get_run(sub.run_id).status == status  # type: ignore[union-attr]
+    assert len(calls) == n_calls
+    (req,) = asked
+    assert req.outcome == "failed" and "503 from the server" in req.error
+
+
+def test_clean_failure_without_an_advisor_waits_for_a_person(app: App) -> None:
+    calls: list[int] = []
+    _failing_send_flow(app, calls)
+    sub = app.submit_sync("f", {})
+    drain(app)
+    (ex,) = app.executions(sub.run_id)
+    assert ex.status == "needs-review" and ex.reason == "effect_unknown"
+    assert ex.detail["outcome"] == "failed" and ex.detail["advice"] == "no advisor configured"
+    with app.ledger.tx() as tx:
+        (eff,) = tx.list_effects(sub.run_id)
+    assert eff.status == "failed" and "503" in eff.result["error"]
+    assert calls == [1]
+
+
+def test_clean_failure_of_a_deploy_never_asks_the_advisor(tmp_path: Any) -> None:
+    from agentline import SqliteLedger
+
+    async def advisor(req: AdviceRequest) -> Advice:
+        raise AssertionError("deploys are decided by a person")
+
+    app = App(SqliteLedger(tmp_path / "l.db"), advisor=advisor, backoff_base=0)
+    calls: list[int] = []
+    _failing_send_flow(app, calls, deploy_class=True)
+    sub = app.submit_sync("f", {})
+    drain(app)
+    (ex,) = app.executions(sub.run_id)
+    assert ex.status == "needs-review" and ex.detail["advice"] == "a person decides deploys"
+    assert calls == [1]

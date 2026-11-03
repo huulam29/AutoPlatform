@@ -8,7 +8,7 @@ import os
 import shutil
 import signal
 import tempfile
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -16,9 +16,12 @@ from agentline.config import Config
 from agentline.errors import AgentlineError, PermanentError, ValidationError
 from agentline.integrations.http import redact
 from agentline.registry import ActionCall
+from agentline.runners.common import base_env, declared_env
 
 TAIL_CHARS = 4000
 SECRET_ENV_VARS = ("GITHUB_TOKEN", "JIRA_API_TOKEN", "GITHUB_WEBHOOK_SECRET", "JIRA_WEBHOOK_SECRET")
+# what `git push` from a mirror may need from the host (an SSH agent socket, a custom ssh)
+GIT_PASS_ENV = ("SSH_AUTH_SOCK", "SSH_AGENT_PID", "GIT_SSH", "GIT_SSH_COMMAND")
 
 
 class CommandTimeout(AgentlineError):
@@ -37,15 +40,35 @@ def tail(text: str, n: int = TAIL_CHARS) -> str:
     return scrub(text[-n:])
 
 
+def pass_env_names(value: object, where: str) -> list[str]:
+    """A `pass_env` setting (a name or a list of names) as a list; anything else is an error."""
+    if value is None:
+        return []
+    names = [value] if isinstance(value, str) else value
+    if not isinstance(names, list) or not all(isinstance(n, str) and n for n in names):
+        raise PermanentError(f"{where}: pass_env must be an env var name or a list of names")
+    return list(names)
+
+
+def command_env(
+    env: Mapping[str, str] | None = None, pass_env: Iterable[str] = ()
+) -> dict[str, str]:
+    """A host command's environment (decision 81): PATH/HOME/locale basics, the host variables
+    named in `pass_env`, then `env`. Nothing else from the host (tokens, keys) reaches it."""
+    return {**base_env(), **declared_env(pass_env), **(env or {})}
+
+
 async def run_cmd(
     cmd: str | list[str],
     *,
     cwd: str | Path | None = None,
     env: Mapping[str, str] | None = None,
+    pass_env: Iterable[str] = (),
     timeout: float | None = None,
 ) -> tuple[int, str, str]:
-    """Run a command (a string goes through /bin/sh). Kills the process group on timeout."""
-    full_env = {**os.environ, **(env or {})}
+    """Run a command (a string goes through /bin/sh) with `command_env(env, pass_env)`. Kills
+    the process group on timeout."""
+    full_env = command_env(env, pass_env)
     kw: dict[str, Any] = {
         "cwd": str(cwd) if cwd else None,
         "env": full_env,
@@ -77,7 +100,7 @@ async def _kill(proc: asyncio.subprocess.Process) -> None:
 
 
 async def git(*args: str, cwd: str | Path | None = None, timeout: float = 300.0) -> str:
-    code, out, err = await run_cmd(["git", *args], cwd=cwd, timeout=timeout)
+    code, out, err = await run_cmd(["git", *args], cwd=cwd, pass_env=GIT_PASS_ENV, timeout=timeout)
     if code != 0:
         raise AgentlineError(f"git {' '.join(args[:3])} failed ({code}): {tail(err, 1000)}")
     return out

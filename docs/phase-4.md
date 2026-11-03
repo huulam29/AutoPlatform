@@ -61,11 +61,13 @@ before.
 - `github.read_reviews`: `repo`, `number`, defaulting to the `pr` input. Returns
   `{state, reviews, comments}`.
 - `shell.run`: `cmd` (a string goes through `/bin/sh`, a list is exec'd), `cwd`, `env`
-  (merged over the host env), `timeout`, `idempotent`, `permanent`. Returns `{exit_code,
-  stdout_tail, stderr_tail}`.
+  (values to set), `pass_env` (host variables it may see, by name), `timeout`, `idempotent`,
+  `permanent`. Returns `{exit_code, stdout_tail, stderr_tail}`. Since decision 81 the command
+  sees only PATH/HOME/locale basics plus `pass_env`, not the whole host environment.
 - `env.deploy` / `env.test`: `env`, `timeout`. They read `[environments.<env>]`:
-  - `deploy`, `test`, and the optional `check`, `cwd` (relative to agentline.toml) and
-    `timeout` / `test_timeout`.
+  - `deploy`, `test`, and the optional `check`, `cwd` (relative to agentline.toml),
+    `timeout` / `test_timeout` and `pass_env` (host variables the commands may see; nothing
+    else from the host env reaches them, decision 81).
   - `{branch}`, `{sha}` and `{env}` are substituted **shell-quoted**, because branch names
     come from agents.
   - cwd: the env's `cwd`, else a temporary detached worktree of the sha taken from

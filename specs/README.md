@@ -17,16 +17,17 @@ normal spec template with three sections added:
 
 Three confirmed safety gaps were fixed on 2026-11-02, each with a regression test: the gate check
 missed `on_exhausted` targets (002 FR-012), `for_each` task records weren't redacted (003 FR-011),
-and a manual retry of `env.deploy` reused the recorded failure (004 FR-009). Those specs now
-describe the fixed behaviour.
+and a manual retry of `env.deploy` reused the recorded failure (004 FR-009). The user then decided
+all 9 open questions (decisions 77-85 in `ARCHITECTURE.md`), and the specs describe the result.
+No clarification markers remain.
 
 | Spec | Covers | Open questions |
 |---|---|---|
-| [001-durable-run-execution](001-durable-run-execution/spec.md) | Run and execution states, leases, fencing, effects, events, routing, loops, budgets, artifacts, audit, journal | 3 |
-| [002-pipeline-definition](002-pipeline-definition/spec.md) | YAML format, validation rules, safety checks, templates, schemas, start point, `for_each` | 1 |
-| [003-secret-handling](003-secret-handling/spec.md) | Secrets file, redaction, environment scoping, webhook and API auth, pre-commit scan | 2 |
-| [004-actions-and-triggers](004-actions-and-triggers/spec.md) | Built-in actions and their effect strategies, webhooks, the poller, Jira polling | 1 |
-| [005-agent-execution](005-agent-execution/spec.md) | Mirrors, worktrees, containers, images and proposals, runners, tool limits, costs | 2 |
+| [001-durable-run-execution](001-durable-run-execution/spec.md) | Run and execution states, leases, fencing, effects, events, routing, loops, budgets, artifacts, audit, journal | 0 |
+| [002-pipeline-definition](002-pipeline-definition/spec.md) | YAML format, validation rules, safety checks, templates, schemas, start point, `for_each` | 0 |
+| [003-secret-handling](003-secret-handling/spec.md) | Secrets file, redaction, environment scoping, webhook and API auth, pre-commit scan | 0 |
+| [004-actions-and-triggers](004-actions-and-triggers/spec.md) | Built-in actions and their effect strategies, webhooks, the poller, Jira polling | 0 |
+| [005-agent-execution](005-agent-execution/spec.md) | Mirrors, worktrees, containers, images and proposals, runners, tool limits, costs | 0 |
 
 ## Not covered yet
 

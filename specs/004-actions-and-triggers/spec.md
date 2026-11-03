@@ -125,7 +125,7 @@ A pipeline can run a script on the host, pass it the node's inputs and use its J
 - **FR-003**: `jira.comment` MUST use a marker in the comment body as its check.
 - **FR-004**: `github.merge_pr` MUST use a read of the pull request as its check, and accept only `squash`, `merge` or `rebase`.
 - **FR-005**: `shell.run` MUST name its effect per try, including manual retries, so a finished command runs again on any retry, while a crash mid-command is unknown.
-- **FR-006**: `env.deploy` and `env.test` MUST take their commands from `[environments.<env>]`, and shell-quote substituted values because branch names come from agents.
+- **FR-006**: `env.deploy` and `env.test` MUST take their commands from `[environments.<env>]`, and shell-quote substituted values because branch names come from agents. Commands see only the variables the env lists in `pass_env` (see `003-secret-handling`, FR-014).
 - **FR-007**: `env.deploy` MUST be deploy-class, and MUST refuse `on_unknown: ai`.
 - **FR-008**: `env.deploy` MUST write one `deploy` audit row per deploy effect, with environment, commit, branch, exit code, approver and gate.
 - **FR-009**: `env.deploy` MUST name its effect per try, including manual retries (`deploy#1`, then `deploy#r1.1` after one retry), so a manual retry deploys again, and each deploy is audited under that name. (Until 2026-11-02 it used the attempt number, and a manual retry reused the recorded failure; fixed, with `test_manual_retry_redeploys`.)
@@ -142,7 +142,7 @@ A pipeline can run a script on the host, pass it the node's inputs and use its J
 **Polling**
 
 - **FR-016**: The poller MUST run at the waits' `poll_every` and deliver a result as a webhook would.
-- **FR-017**: Jira polling MUST start runs only for assignments to the token's account made after polling was first enabled for that pipeline, using the same dedupe key shape as the webhook. [NEEDS CLARIFICATION: the poll key has no pipeline name, and dedupe keys are global, so when two poll pipelines match one assignment only the first starts. A probe confirmed 1 run, then 0. The webhook adds the pipeline name for this exact case. Is the first-pipeline-wins result intended?]
+- **FR-017**: Jira polling MUST start runs only for assignments to the token's account made after polling was first enabled for that pipeline, using the same dedupe key shape as the webhook. The key has no pipeline name, so when several poll pipelines match one assignment only the first starts a run. That is intended (decision 83).
 - **FR-018**: Poll triggers MUST NOT run more often than every 30 s (default 300 s), and MUST follow pipelines added or removed by a live reload.
 
 ### Key Entities *(include if feature involves data)*
@@ -181,11 +181,11 @@ A pipeline can run a script on the host, pass it the node's inputs and use its J
 | FR-002 | `src/agentline/actions/github.py:101`, `src/agentline/actions/github.py:128`, `src/agentline/actions/github.py:148` |
 | FR-003 | `src/agentline/actions/jira.py:18`, `src/agentline/actions/jira.py:70` |
 | FR-004 | `src/agentline/actions/github.py:259`, `src/agentline/actions/github.py:265` |
-| FR-005 | `src/agentline/actions/shell.py:91`, `src/agentline/context.py:85` |
-| FR-006 | `src/agentline/actions/env.py:23`, `src/agentline/actions/env.py:99` |
-| FR-007 | `src/agentline/actions/env.py:91`, `src/agentline/actions/env.py:139`, `src/agentline/context.py:239` |
-| FR-008 | `src/agentline/actions/env.py:174` |
-| FR-009 | `src/agentline/actions/env.py:134`, `src/agentline/scheduler.py:377`, `src/agentline/context.py:245` |
+| FR-005 | `src/agentline/actions/shell.py:94`, `src/agentline/context.py:90` |
+| FR-006 | `src/agentline/actions/env.py:31`, `src/agentline/actions/env.py:108` |
+| FR-007 | `src/agentline/actions/env.py:100`, `src/agentline/actions/env.py:151`, `src/agentline/context.py:246` |
+| FR-008 | `src/agentline/actions/env.py:186` |
+| FR-009 | `src/agentline/actions/env.py:146`, `src/agentline/scheduler.py:393`, `src/agentline/context.py:252` |
 | FR-010 | `src/agentline/actions/__init__.py:13`, `src/agentline/integrations/http.py:32` |
 | FR-011 | `src/agentline/integrations/http.py:98`, `src/agentline/integrations/http.py:100` |
 | FR-012 | `src/agentline/api/webhooks.py:196`, `src/agentline/api/webhooks.py:206`, `src/agentline/actions/github.py:297` |
@@ -194,8 +194,8 @@ A pipeline can run a script on the host, pass it the node's inputs and use its J
 | FR-015 | `src/agentline/api/webhooks.py:259`, `src/agentline/api/webhooks.py:267` |
 | FR-016 | `src/agentline/poller.py:61` |
 | FR-017 | `src/agentline/sources/jira_poll.py:94`, `src/agentline/sources/jira_poll.py:112`, `src/agentline/scheduler.py:76` |
-| FR-018 | `src/agentline/pipeline/spec.py:451`, `src/agentline/sources/jira_poll.py:155` |
+| FR-018 | `src/agentline/pipeline/spec.py:453`, `src/agentline/sources/jira_poll.py:155` |
 
-Edge-case evidence: `src/agentline/actions/env.py:53` (deploy working folder), `src/agentline/actions/github.py:313` (poll rules), `src/agentline/api/webhooks.py:168` (unknown filter keys), `src/agentline/sources/jira_poll.py:82` (poll query).
+Edge-case evidence: `src/agentline/actions/env.py:61` (deploy working folder), `src/agentline/actions/github.py:313` (poll rules), `src/agentline/api/webhooks.py:168` (unknown filter keys), `src/agentline/sources/jira_poll.py:82` (poll query).
 
 Existing tests: `tests/actions/test_jira_github.py`, `tests/actions/test_shell_env.py`, `tests/actions/test_clients.py`, `tests/api/test_webhooks.py`, `tests/api/test_poller.py`, `tests/e2e/test_e2e.py`.

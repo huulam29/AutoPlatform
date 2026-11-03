@@ -55,7 +55,7 @@ An agent runs with a scrubbed environment and receives only the variables declar
 
 **Acceptance Scenarios**:
 
-1. **Given** a local agent CLI, **When** it starts, **Then** its environment holds only a short safe list plus its declared names.
+1. **Given** a local agent CLI, or a `shell.run` or `env.*` command, **When** it starts, **Then** its environment holds only a short safe list plus its declared names.
 2. **Given** a provider's key under a custom name, **When** the agent starts, **Then** the key reaches it under the name the CLI expects.
 3. **Given** a container workspace with declared secrets, **When** it starts, **Then** the command line holds only the names.
 
@@ -74,6 +74,7 @@ Inbound webhooks need a valid signature or shared secret, and the API needs a be
 1. **Given** a GitHub webhook with a bad or missing signature, **When** it arrives, **Then** it gets 401.
 2. **Given** a webhook endpoint with no secret configured, **When** anything arrives, **Then** it gets 401.
 3. **Given** an API token is set, **When** an `/api` request has a wrong or missing token, **Then** it gets 401.
+4. **Given** `serve` binds to a non-local address with no token, **When** it starts, **Then** it creates a token, so the API is never open to the network.
 
 ---
 
@@ -133,11 +134,11 @@ A developer who stages a credential file, or a line that looks like a real key, 
 
 - **FR-012**: A local agent subprocess MUST receive only the safe list (`PATH`, `HOME`, `USER`, `LOGNAME`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TMPDIR`, `TERM`, `SHELL`, `TZ`) plus names declared for it or mapped by the harness.
 - **FR-013**: A container MUST receive declared secrets by name only, with no host environment and no docker socket.
-- **FR-014**: `shell.run`, `env.deploy` and `env.test` commands run on the host with its full environment, plus any `env` the node sets. [NEEDS CLARIFICATION: unlike runners, these actions inherit every secret in the process. `ARCHITECTURE.md` §10 only promises scoping for containers, and an operator's deploy script may need those variables. Is full inheritance intended for `shell.run`, whose command comes from a pipeline file?]
+- **FR-014**: `shell.run`, `env.deploy` and `env.test` commands MUST see only the safe list plus the host variables they declare: `with: { pass_env: [...] }` for `shell.run`, `pass_env` in `[environments.<env>]` for the other two. The values a node sets in `env` are added. `git push` from a mirror also gets the SSH agent variables (decision 81; until 2026-11-02 these commands inherited the whole host environment).
 
 **Entry points**
 
-- **FR-015**: `/api` routes MUST require the bearer token when one is set, compared in constant time. With no token set the API is open, and the default bind address is 127.0.0.1. [NEEDS CLARIFICATION: `serve --host 0.0.0.0` with no token starts normally, which leaves the secrets API and every run action open to the network. Should `serve` refuse a non-local bind with no token?]
+- **FR-015**: `/api` routes MUST require the bearer token when one is set, compared in constant time. When `serve` binds to anything but a loopback address with no token set, it MUST create one in the secrets file as `AGENTLINE_API_TOKEN` and say where, without printing it. The web UI asks for it on first use (decision 82; until 2026-11-02 a non-local bind with no token left the API open).
 - **FR-016**: GitHub webhooks MUST verify an HMAC-SHA256 signature over the raw body, and Jira webhooks a shared secret by header or query string, both in constant time. An unset secret MUST reject everything.
 
 **Commit time**
@@ -182,17 +183,17 @@ A developer who stages a credential file, or a line that looks like a real key, 
 | FR-005 | `src/agentline/api/settings.py:358` |
 | FR-006 | `src/agentline/redact.py:62`, `src/agentline/redact.py:93` |
 | FR-007 | `src/agentline/app.py:115`, `src/agentline/secrets.py:136`, `src/agentline/redact.py:41` |
-| FR-008 | `src/agentline/scheduler.py:80`, `src/agentline/scheduler.py:118`, `src/agentline/scheduler.py:156`, `src/agentline/scheduler.py:284`, `src/agentline/context.py:105`, `src/agentline/context.py:326`, `src/agentline/app.py:402`, `src/agentline/runchat.py:113` |
+| FR-008 | `src/agentline/scheduler.py:80`, `src/agentline/scheduler.py:118`, `src/agentline/scheduler.py:156`, `src/agentline/scheduler.py:284`, `src/agentline/context.py:110`, `src/agentline/context.py:359`, `src/agentline/app.py:405`, `src/agentline/runchat.py:113` |
 | FR-009 | `src/agentline/logs.py:64`, `src/agentline/logs.py:149`, `src/agentline/logs.py:155` |
 | FR-010 | `src/agentline/cli/env.py:46`, `src/agentline/incidents.py:119` |
-| FR-011 | `src/agentline/pipeline/compile.py:140`, `src/agentline/pipeline/compile.py:172`, `src/agentline/pipeline/compile.py:182` |
+| FR-011 | `src/agentline/pipeline/compile.py:140`, `src/agentline/pipeline/compile.py:173`, `src/agentline/pipeline/compile.py:183` |
 | FR-012 | `src/agentline/runners/common.py:18`, `src/agentline/runners/common.py:71`, `src/agentline/runners/agent_cli.py:58` |
 | FR-013 | `src/agentline/workspaces/container.py:122`, `src/agentline/workspaces/container.py:178` |
-| FR-014 | `src/agentline/actions/_util.py:48`, `src/agentline/actions/shell.py:64` |
-| FR-015 | `src/agentline/api/server.py:54`, `src/agentline/api/server.py:87`, `src/agentline/cli/__init__.py:97` |
+| FR-014 | `src/agentline/actions/_util.py:53`, `src/agentline/actions/shell.py:54`, `src/agentline/actions/env.py:113` |
+| FR-015 | `src/agentline/api/server.py:67`, `src/agentline/api/server.py:80`, `src/agentline/cli/commands.py:326` |
 | FR-016 | `src/agentline/api/webhooks.py:44`, `src/agentline/api/webhooks.py:51`, `src/agentline/api/webhooks.py:245` |
 | FR-017 | `.githooks/pre-commit:17`, `.githooks/pre-commit:29` |
 
-Edge-case evidence: `src/agentline/redact.py:20` (minimum length), `src/agentline/redact.py:21` (name rule), `src/agentline/secrets.py:81` (delete), `src/agentline/secrets.py:103` (sync), `src/agentline/integrations/http.py:36` and `src/agentline/actions/_util.py:21` (second scrubber), `src/agentline/runners/claude_code.py:112` (MCP config), `src/agentline/api/assistant.py:183` (attachments), `src/agentline/api/server.py:111` (no bearer on attachments).
+Edge-case evidence: `src/agentline/redact.py:20` (minimum length), `src/agentline/redact.py:21` (name rule), `src/agentline/secrets.py:81` (delete), `src/agentline/secrets.py:103` (sync), `src/agentline/integrations/http.py:36` and `src/agentline/actions/_util.py:22` (second scrubber), `src/agentline/runners/claude_code.py:112` (MCP config), `src/agentline/api/assistant.py:183` (attachments), `src/agentline/api/server.py:137` (no bearer on attachments).
 
-Existing tests: `tests/safety/test_redaction.py`, `tests/ai/test_agent_env.py`, `tests/ai/test_settings_api.py`, `tests/api/test_webhooks.py`, `tests/test_precommit_hook.py`.
+Existing tests: `tests/safety/test_redaction.py`, `tests/api/test_api_token.py`, `tests/ai/test_agent_env.py`, `tests/ai/test_settings_api.py`, `tests/api/test_webhooks.py`, `tests/test_precommit_hook.py`.

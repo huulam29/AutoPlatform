@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import time
 from collections.abc import Awaitable, Callable
@@ -31,6 +32,9 @@ class AdviceRequest:
     description: str
     has_check: bool
     has_key: bool
+    # unknown: the worker crashed around the call; failed: the call raised `error` cleanly
+    outcome: Literal["unknown", "failed"] = "unknown"
+    error: str = ""
 
 
 @dataclass(frozen=True)
@@ -53,6 +57,7 @@ class StepContext:
     notes: dict[str, Any] = field(default_factory=dict)  # merged into the execution's detail
     # a for_each task's copy of the context namespaces its effects ("task3:send")
     effect_prefix: str = ""
+    task: int | None = None  # a for_each task's index: it gets its own checkout (decision 84)
 
     def __post_init__(self) -> None:
         self.log = logging.LoggerAdapter(
@@ -234,7 +239,9 @@ class StepContext:
 
         intent is recorded before `do()`; committed after. If a previous attempt left an intent
         (it crashed around the call), `check()` decides whether it already happened; with only
-        a `key`, the provider is trusted to dedupe; with neither, `on_unknown` applies.
+        a `key`, the provider is trusted to dedupe; with neither, `on_unknown` applies. A call
+        that raised is recorded as `failed`: with neither key nor check, the advisor decides
+        whether doing it again is safe (a person decides for deploy-class effects).
         """
         if deploy_class and on_unknown == "ai":
             raise ValueError("on_unknown='ai' is not allowed on deploy-class effects")
@@ -246,29 +253,53 @@ class StepContext:
             self.log.info("effect %s already committed, reusing result", name)
             return existing.result  # type: ignore[no-any-return]
 
-        if existing is not None and existing.status == "intent":
+        if existing is not None and existing.status in ("intent", "failed"):
             if check is not None:
                 found = await check()
                 if found is not None:
                     self.log.info("effect %s found by check after a crash", name)
                     await asyncio.to_thread(self._write_effect, ident, "committed", key, found)
                     return found
+            elif key is None and existing.status == "failed":
+                error = str((existing.result or {}).get("error") or "")
+                await self._on_unknown(
+                    name, on_unknown, description, existing, error=error, deploy_class=deploy_class
+                )
             elif key is None:
                 await self._on_unknown(name, on_unknown, description, existing)
 
         await asyncio.to_thread(self._write_effect, ident, "intent", key, None)
-        result = await do()
+        try:
+            result = await do()
+        except Exception as e:  # a clean failure, not a crash: record what it said
+            failure = {"error": f"{type(e).__name__}: {e}"[:2000]}
+            with contextlib.suppress(StaleLease):
+                await asyncio.to_thread(self._write_effect, ident, "failed", key, failure)
+            raise
         await asyncio.to_thread(self._write_effect, ident, "committed", key, result)
         return result
 
     async def _on_unknown(
-        self, name: str, policy: OnUnknown, description: str, existing: Effect
+        self,
+        name: str,
+        policy: OnUnknown,
+        description: str,
+        existing: Effect,
+        *,
+        error: str | None = None,
+        deploy_class: bool = False,
     ) -> None:
+        """`error` set: the previous call failed cleanly, and the advisor decides (decision 78)
+        unless the node said `retry` or the effect is deploy-class (then a person decides)."""
         detail: dict[str, Any] = {"effect": name, "description": description}
+        if error is not None:
+            detail.update(outcome="failed", error=self.app.redactor.redact(error))
         if policy == "retry":
             self.log.warning("effect %s state unknown; on_unknown=retry, doing it again", name)
             return
-        if policy == "ai":
+        if error is not None and deploy_class:
+            raise NeedsReview("effect_unknown", {**detail, "advice": "a person decides deploys"})
+        if policy == "ai" or error is not None:
             advisor = self.app.advisor
             if advisor is None:
                 raise NeedsReview("effect_unknown", {**detail, "advice": "no advisor configured"})
@@ -278,9 +309,11 @@ class StepContext:
                     self.node_id,
                     self.iteration,
                     name,
-                    description,
+                    self.app.redactor.redact(description),
                     has_check=False,
                     has_key=False,
+                    outcome="failed" if error is not None else "unknown",
+                    error=detail.get("error", ""),
                 )
             )
             if advice.cost_usd:

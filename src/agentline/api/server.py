@@ -49,6 +49,32 @@ from agentline.issues import IssueStore
 from agentline.registry import Registry
 
 DEFAULT_STATIC = Path(__file__).resolve().parents[3] / "web" / "dist"
+TOKEN_ENV = "AGENTLINE_API_TOKEN"
+
+
+def is_local(host: str) -> bool:
+    """Loopback only: `localhost`, 127.0.0.0/8, ::1."""
+    import ipaddress
+
+    if host.strip("[]").lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host.strip("[]")).is_loopback
+    except ValueError:
+        return False  # a host name: it may resolve to anything
+
+
+def ensure_api_token(host: str) -> bool:
+    """Off localhost the API always needs a bearer token (decision 82): with none set, create
+    one in the secrets file (never printed; the web UI asks for it). True when one was made."""
+    import secrets as pysecrets
+
+    from agentline.secrets import set_secret
+
+    if is_local(host) or os.environ.get(TOKEN_ENV):
+        return False
+    set_secret(TOKEN_ENV, pysecrets.token_urlsafe(32))
+    return True
 
 
 def _token_check(token: str | None) -> Any:
@@ -84,7 +110,7 @@ def create_server(
     from agentline.live import LivePipelines
 
     server = create_app(app, pipelines, github_secret=github_secret, jira_secret=jira_secret)
-    token = token or os.environ.get("AGENTLINE_API_TOKEN") or None
+    token = token or os.environ.get(TOKEN_ENV) or None
     files = PipelineFiles(pipelines_dir, registry, config)
     if isinstance(pipelines, LivePipelines):
         files.attach(pipelines)
