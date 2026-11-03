@@ -3119,3 +3119,121 @@ button.ri-main:active:not(:disabled) {
 .run-chat-new {
   align-self: center;
 }
+
+/* ---- web UI parity (spec 006) ----------------------------------------------------------- */
+/* the command palette button, left of the Chat toggle */
+.palette-toggle {
+  margin-left: auto;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1-5);
+  color: var(--text-secondary);
+  border-color: var(--border-strong);
+}
+.palette-toggle + .chat-toggle {
+  margin-left: 0;
+}
+.palette-backdrop {
+  align-items: flex-start;
+  padding-top: var(--space-12);
+}
+.palette {
+  width: min(var(--size-palette), 100%);
+  background: var(--decor-ticks), var(--surface-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-float);
+  overflow: hidden;
+  animation: rise var(--dur-dialog) var(--ease-out);
+}
+.palette-input {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--border-hairline);
+  border-radius: 0;
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--fs-md);
+  background: transparent;
+}
+.palette-input:focus {
+  outline: none;
+}
+.palette-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1);
+  max-height: var(--size-palette-list);
+  overflow: auto;
+}
+.palette-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-1-5) var(--space-3);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+}
+.palette-list li.on {
+  background: var(--surface-raised);
+  box-shadow: inset var(--border-width-strong) 0 0 var(--accent-action);
+}
+.palette-list .palette-empty {
+  cursor: default;
+}
+.palette-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+/* a path with Copy / Show in folder */
+.copy-path {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.copy-path .mono {
+  overflow-wrap: anywhere;
+}
+.folder-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  max-height: var(--size-folder-list);
+  overflow: auto;
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-control);
+  background: var(--surface-page);
+}
+.folder-list li {
+  padding: var(--space-0-5) 0;
+}
+/* the sign-in screen: the only thing shown while the engine refuses this browser */
+.signin {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: var(--surface-page);
+}
+.signin-card {
+  width: min(var(--size-signin), 100%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-6);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-panel);
+  background: var(--decor-ticks), var(--surface-panel);
+}
+.signin-card h2 {
+  margin: 0;
+  font-size: var(--fs-lg);
+}
+.card.approval.on {
+  border-color: var(--status-attention);
+}
