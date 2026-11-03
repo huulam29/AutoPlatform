@@ -82,7 +82,7 @@ def create_app_router(files: Any, state: Any, token: str | None) -> APIRouter:
         from agentline import __version__
 
         local = is_local_request(request)
-        cfg_path = config_path(files.config)
+        cfg_path = config_path(files.config).resolve()
         return {
             "version": __version__,
             "data_folder": str(_home()),
@@ -165,7 +165,7 @@ def create_app_router(files: Any, state: Any, token: str | None) -> APIRouter:
             raise HTTPException(400, f"no such folder: {p}")
         if not p.is_dir():
             raise HTTPException(400, f"not a folder: {p}")
-        cfg = config_path(files.config)
+        cfg = config_path(files.config).resolve()
         text = cfg.read_text() if cfg.exists() else ""
         try:
             new = tomlwrite.set_top_level(text, "pipelines_dir", str(p))
@@ -194,7 +194,7 @@ def create_app_router(files: Any, state: Any, token: str | None) -> APIRouter:
     def reveal(request: Request, body: RevealBody) -> dict[str, Any]:
         if not is_local_request(request):
             raise HTTPException(403, "Show in folder works only on the engine's own machine")
-        cfg = config_path(files.config)
+        cfg = config_path(files.config).resolve()
         targets = {
             "data": _home(),
             "pipelines": files.root,
