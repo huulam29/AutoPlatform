@@ -237,6 +237,7 @@ def setup(workdir: Path, tickets: list[str]) -> World:
         "GITHUB_WEBHOOK_SECRET": GH_SECRET,
         "JIRA_WEBHOOK_SECRET": JIRA_SECRET,
         "AGENTLINE_TRIAGE": "off",  # failure triage would call a real agent
+        "AGENTLINE_ADVISOR": "off",  # so would the effect advisor
         "AGENTLINE_REVIEW": "off",  # and so would run reviews
         "AGENTLINE_RUNCHAT": "off",  # and chat start nodes' answers
     }

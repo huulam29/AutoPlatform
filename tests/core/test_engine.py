@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 from agentline import App, NeedsReview, PermanentError, Route, RunStatus, StepContext
-from agentline.errors import StaleLease
+from agentline.errors import StaleLease, ValidationError
 from agentline.scheduler import Fence
 
 from .conftest import statuses
@@ -309,3 +309,32 @@ def test_stale_epoch_cannot_commit(app: App) -> None:
     with app.ledger.tx() as tx:
         app.scheduler.complete(tx, ex, {}, Fence("running", ex.lease_epoch))
     assert app.get_run(sub.run_id).status == RunStatus.DONE  # type: ignore[union-attr]
+
+
+def test_retry_refuses_a_cancelled_run_and_the_journal_shows_claims_and_cancels(app: App) -> None:
+    flow = app.flow("c")
+
+    @flow.step("a", max_attempts=1)
+    async def a(ctx: StepContext, inputs: dict[str, Any]) -> dict[str, Any]:
+        raise RuntimeError("boom")
+
+    sub = app.submit_sync("c", {})
+    drain(app)
+    asyncio.run(app.cancel(sub.run_id))
+    with pytest.raises(ValidationError, match="cancelled"):
+        asyncio.run(app.retry(sub.run_id))
+    assert app.get_run(sub.run_id).status == "cancelled"  # type: ignore[union-attr]
+
+    flow2 = app.flow("w")
+
+    @flow2.step("park", kind="gate")
+    async def park(ctx: StepContext, inputs: dict[str, Any]) -> Any:
+        return ctx.wait("k", kind="gate")
+
+    sub2 = app.submit_sync("w", {})
+    drain(app)
+    asyncio.run(app.cancel(sub2.run_id))
+    with app.ledger.tx() as tx:
+        lines = [j.message for j in tx.list_journal(sub2.run_id)]
+    assert lines == ["created (ready)", "claimed -> running", "running -> waiting",
+                     "waiting -> cancelled"]  # fmt: skip

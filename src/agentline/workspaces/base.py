@@ -19,6 +19,11 @@ if TYPE_CHECKING:
     from agentline.context import StepContext
 
 
+def task_suffix(ctx: StepContext) -> str:
+    """`-task<n>` for a for_each task's checkout, container and diff; empty otherwise."""
+    return "" if getattr(ctx, "task", None) is None else f"-task{ctx.task}"
+
+
 def select_repo(ctx: StepContext, spec: WorkspaceSpec, config: Config | None) -> RepoConfig:
     """The node's `workspace.repo`, else the only configured repo, else the payload's `repo`.
     Only repos configured in agentline.toml can be checked out (a webhook payload can name
@@ -45,14 +50,16 @@ async def checkout(
     ctx: StepContext, spec: WorkspaceSpec, config: Config | None, home: Path | None
 ) -> AsyncIterator[tuple[RepoConfig, git.Worktree]]:
     """Mirror -> worktree on `agentline/<run_id>`; the worktree is removed afterwards (the
-    branch is kept) unless `keep_worktree: true`."""
+    branch is kept) unless `keep_worktree: true`. A for_each task gets its own worktree and
+    branch (`-task<n>`), so parallel tasks never share a checkout."""
     repo = select_repo(ctx, spec, config)
     root = home or git.agentline_home()
     mirror = await git.ensure_mirror(repo, root / "mirrors")
-    path = root / "worktrees" / git.safe_name(repo.name) / ctx.execution.id
+    path = root / "worktrees" / git.safe_name(repo.name) / (ctx.execution.id + task_suffix(ctx))
     base_ref = str(spec.options.get("base") or repo.default_branch)
-    wt = await git.create_worktree(mirror, path, ctx.run_id, base_ref)
-    ctx.notes["workspace"] = {
+    task = getattr(ctx, "task", None)
+    wt = await git.create_worktree(mirror, path, ctx.run_id, base_ref, task=task)
+    note = {
         "type": spec.type,
         "repo": repo.name,
         "branch": wt.branch,
@@ -60,6 +67,10 @@ async def checkout(
         "start_sha": wt.start_sha,
         "worktree": str(wt.path),
     }
+    if task is None:
+        ctx.notes["workspace"] = note
+    else:  # tasks share the node's notes
+        ctx.notes.setdefault("workspaces", {})[str(task)] = note
     try:
         yield repo, wt
     finally:
@@ -96,7 +107,7 @@ class GitWorkspace:
             committed = await git.commit_leftovers(wt.path, msg)
         head = await git.head_sha(wt.path)
         diff = await git.diff(wt.path, wt.base_sha, head)
-        await self.ctx.attach("diff", diff)
+        await self.ctx.attach("diff" + task_suffix(self.ctx).replace("-", "."), diff)
         self._final = {
             "name": wt.branch,
             "sha": head,

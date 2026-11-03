@@ -340,7 +340,10 @@ class Scheduler:
         self, tx: LedgerTx, ex: Execution, decision: str, effect_result: Any
     ) -> None:
         for eff in tx.list_effects(ex.run_id):
-            if (eff.node_id, eff.iteration) != (ex.node_id, ex.iteration) or eff.status != "intent":
+            if (eff.node_id, eff.iteration) != (ex.node_id, ex.iteration) or eff.status not in (
+                "intent",
+                "failed",
+            ):
                 continue
             if decision == "redo":
                 eff.status = "redo"
@@ -351,10 +354,23 @@ class Scheduler:
             eff.updated_at = self.clock()
             tx.put_effect(eff)
 
+    def claim(self, tx: LedgerTx, owner: str, lease_ttl: float) -> Execution | None:
+        """Claim the next ready (or backed-off) execution, journaled with the claim."""
+        ex = tx.claim_next(owner, self.clock(), lease_ttl)
+        if ex is not None:
+            tx.add_journal(ex.run_id, "status", "claimed -> running", execution_id=ex.id,
+                           node_id=ex.node_id, iteration=ex.iteration,
+                           detail={"attempt": ex.attempt, "lease_owner": owner},
+                           at=self.clock())  # fmt: skip
+        return ex
+
     def cancel(self, tx: LedgerTx, run_id: str) -> None:
         for ex in tx.list_executions(run_id):
             if ex.status not in TERMINAL_EXEC:
                 tx.update_execution(ex.id, status=E.CANCELLED, lease_owner=None)
+                tx.add_journal(run_id, "status", f"{ex.status} -> {E.CANCELLED}",
+                               execution_id=ex.id, node_id=ex.node_id, iteration=ex.iteration,
+                               at=self.clock())  # fmt: skip
         tx.update_run(run_id, status=RunStatus.CANCELLED)
 
     def retry_run(self, tx: LedgerTx, run_id: str, node_id: str | None = None) -> int:

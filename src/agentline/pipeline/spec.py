@@ -17,7 +17,8 @@ from agentline.errors import ValidationError
 from agentline.registry import EffectPolicy, WorkspaceSpec
 
 NODE_TYPES = ("agent", "action", "router", "gate", "wait", "chat")
-COMMON_FIELDS = {"type", "in", "out", "max_attempts", "timeout", "budget_usd", "description"}
+COMMON_FIELDS = {"type", "in", "out", "max_attempts", "budget_usd", "description"}
+TIMEOUT_TYPES = ("agent", "action")  # what waits for a person or an event has no timeout
 TYPE_FIELDS: dict[str, set[str]] = {
     "agent": {
         "harness",
@@ -34,8 +35,9 @@ TYPE_FIELDS: dict[str, set[str]] = {
         "mcp",
         "for_each",
         "max_parallel",
+        "timeout",
     },
-    "action": {"uses", "with", "effect", "for_each", "max_parallel"},
+    "action": {"uses", "with", "effect", "for_each", "max_parallel", "timeout"},
     "router": {"switch", "mode", "prompt", "model"},
     "gate": {"prompt", "approvers"},
     "wait": {"for", "with", "poll_every"},
@@ -498,7 +500,14 @@ class _Parser:
             return None
         allowed = COMMON_FIELDS | TYPE_FIELDS[ntype]
         for k in raw:
-            if k not in allowed:
+            if k == "timeout" and ntype not in TIMEOUT_TYPES:
+                self.issue(
+                    f"{p}.timeout",
+                    f"timeout does nothing on {ntype} nodes",
+                    self.key_pos(raw, k),
+                    "only agent and action nodes time out; remove it",
+                )
+            elif k not in allowed:
                 self.issue(
                     f"{p}.{k}",
                     f"field not allowed on {ntype} nodes",

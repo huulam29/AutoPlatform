@@ -321,10 +321,23 @@ def cmd_serve(env: CliEnv, args: argparse.Namespace) -> int:
         )
         return 1
     try:
+        from agentline.api.server import TOKEN_ENV, ensure_api_token
+
+        if ensure_api_token(args.host):
+            from agentline.secrets import secrets_path
+
+            env.err(
+                f"serve: {args.host} is reachable from other machines, so the API needs a token;"
+                f" created {TOKEN_ENV} in {secrets_path()}. The web UI asks for it once."
+            )
         asgi = _build_asgi_app(env.app, env.live, env.registry, env)
     except ImportError as e:
         env.err(f"agentline serve needs the server extra ({e}): pip install 'agentline[server]'")
         return 1
+    from agentline import advisor
+
+    if advisor.enabled() and env.app.advisor is None:  # decisions 3 and 78
+        env.app.advisor = advisor.make_advisor(asgi.state.pipeline_files)
 
     async def main() -> None:
         stop = asyncio.Event()

@@ -12,7 +12,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from agentline.actions._util import config_of, env_section, require, run_cmd, sha_worktree, tail
+from agentline.actions._util import (
+    config_of,
+    env_section,
+    pass_env_names,
+    require,
+    run_cmd,
+    sha_worktree,
+    tail,
+)
 from agentline.actions.shell import CommandFailed
 from agentline.config import Config
 from agentline.context import StepContext
@@ -73,13 +81,15 @@ class EnvDeploy:
     `on_unknown: ai` is rejected).
 
     Runs `[environments.<env>].deploy` with `{branch}` / `{sha}` / `{env}` substituted
-    (shell-quoted). cwd: env `cwd`, else a temp worktree of the sha from the mirror.
+    (shell-quoted). cwd: env `cwd`, else a temp worktree of the sha from the mirror. The command
+    sees only PATH/HOME/locale basics plus the host variables the env lists in `pass_env`.
 
     Effect strategy: **check** if the env has `check = "<cmd>"`, which must print the
     deployed sha; it matches when it equals the input sha (either may be abbreviated).
     Without a check: **none**, so a crash mid-deploy is unknown → `on_unknown` (default
-    `halt`, never `ai`). The effect is named `deploy#<attempt>`, so a deploy that finished
-    with a non-zero exit is recorded as such and a retry attempt deploys again.
+    `halt`, never `ai`). The effect is named `deploy#<attempt key>`, so a deploy that finished
+    with a non-zero exit is recorded as such and a retry attempt, or a manual retry, deploys
+    again.
 
     Params: `env` (required), `timeout`. Returns `{env, sha, branch, exit_code, at,
     output_tail}`; a non-zero exit raises.
@@ -100,6 +110,7 @@ class EnvDeploy:
         timeout = call.params.get("timeout") or section.get("timeout")
         timeout = float(timeout) if timeout is not None else None
         sha = target["sha"]
+        pass_env = pass_env_names(section.get("pass_env"), f"[environments.{env}]")
 
         def result(code: int, output: str, **extra: Any) -> dict[str, Any]:
             return {
@@ -115,7 +126,9 @@ class EnvDeploy:
         async def check() -> dict[str, Any] | None:
             assert check_cmd is not None
             async with _cwd(section, config, target) as cwd:
-                code, out, _ = await run_cmd(check_cmd, cwd=cwd, timeout=timeout or 300)
+                code, out, _ = await run_cmd(
+                    check_cmd, cwd=cwd, pass_env=pass_env, timeout=timeout or 300
+                )
             deployed = out.strip().splitlines()[-1].strip() if out.strip() else ""
             if code != 0 or not deployed or not sha:
                 return None
@@ -125,12 +138,12 @@ class EnvDeploy:
 
         async def do() -> dict[str, Any]:
             async with _cwd(section, config, target) as cwd:
-                code, out, err = await run_cmd(cmd, cwd=cwd, timeout=timeout)
+                code, out, err = await run_cmd(cmd, cwd=cwd, pass_env=pass_env, timeout=timeout)
             return result(code, out + err)
 
         ctx.notes["deploy"] = {"env": env, "sha": sha, "branch": target["branch"]}
         res = await ctx.effect(
-            f"deploy#{ctx.attempt}",
+            f"deploy#{ctx.attempt_key}",
             do,
             check=check if check_cmd else None,
             key=call.effect.key,
@@ -138,7 +151,7 @@ class EnvDeploy:
             deploy_class=True,
             description=f"deploy {sha} ({target['branch']}) to {env}",
         )
-        await _audit_deploy(ctx, res, f"deploy#{ctx.attempt}")
+        await _audit_deploy(ctx, res, f"deploy#{ctx.attempt_key}")
         if res["exit_code"] != 0:
             raise CommandFailed(
                 f"deploy to {env} exited with {res['exit_code']}: {res['output_tail'][-500:]}",
@@ -225,9 +238,13 @@ class EnvTest:
         target = _target(call)
         cmd = substitute(test, {"branch": target["branch"], "sha": target["sha"], "env": env})
         timeout = call.params.get("timeout") or section.get("test_timeout")
+        pass_env = pass_env_names(section.get("pass_env"), f"[environments.{env}]")
         async with _cwd(section, config, target) as cwd:
             code, out, err = await run_cmd(
-                cmd, cwd=cwd, timeout=float(timeout) if timeout is not None else None
+                cmd,
+                cwd=cwd,
+                pass_env=pass_env,
+                timeout=float(timeout) if timeout is not None else None,
             )
         return {
             "env": env,

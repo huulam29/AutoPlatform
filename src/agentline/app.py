@@ -299,8 +299,11 @@ class App:
         who = actor or default_actor()
 
         def _do(tx: LedgerTx) -> int:
-            if tx.get_run(run_id) is None:
+            run = tx.get_run(run_id)
+            if run is None:
                 raise ValidationError(f"no run {run_id}")
+            if run.status == "cancelled":  # its steps would run while it shows cancelled
+                raise ValidationError(f"run {run_id} is cancelled; start a new run instead")
             n = self.scheduler.retry_run(tx, run_id, node_id)
             detail: dict[str, Any] = {"executions": n}
             if via:

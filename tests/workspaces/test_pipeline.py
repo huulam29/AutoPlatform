@@ -145,3 +145,54 @@ nodes:
     (ex,) = app.executions(sub.run_id)
     assert "model said no" in (ex.error or "")
     # the transcript blob is stored, but worker.fail() doesn't persist notes (Phase 5 / limit)
+
+
+FAN_OUT = """version: 1
+name: fan
+nodes:
+  plan: { type: agent, runner: python, prompt: plan, out: plan,
+          with: { function: "tests.workspaces.test_pipeline:three_items" } }
+  work:
+    type: agent
+    runner: python
+    prompt: "do {{item}}"
+    in: [plan]
+    for_each: plan.items
+    max_parallel: 3
+    max_attempts: 1
+    allowed_tools: [read, edit]
+    workspace: { type: local, repo: app }
+    with: { function: "tests.workspaces.test_pipeline:write_item" }
+edges:
+  - plan -> work
+"""
+
+
+def three_items(request: RunRequest) -> dict[str, Any]:
+    return {"items": ["a", "b", "c"]}
+
+
+def write_item(request: RunRequest) -> dict[str, Any]:
+    import time
+
+    assert request.workspace is not None
+    name = request.prompt.split()[-1]
+    (request.workspace.path / f"{name}.txt").write_text(name)
+    time.sleep(0.3)  # the three tasks overlap
+    return {"wrote": name}
+
+
+def test_for_each_tasks_each_get_their_own_checkout(make_app: Any, tmp_path: Path) -> None:
+    app = make_app(FAN_OUT)
+    sub = app.submit_sync("fan", {})
+    drain(app)
+    assert app.get_run(sub.run_id).status == "done", app.executions(sub.run_id)
+    results = app.result(sub.run_id, "work")
+    mirror = tmp_path / "home" / "mirrors" / "app.git"
+    assert [r["name"] for r in results] == [f"agentline/{sub.run_id}-task{i}" for i in range(3)]
+    for i, (r, item) in enumerate(zip(results, "abc", strict=True)):
+        assert r["wrote"] == item and r["changed"] and r["worktree"].endswith(f"-task{i}")
+        assert git(mirror, "show", f"{r['sha']}:{item}.txt") == item
+    (work,) = [x for x in app.executions(sub.run_id) if x.node_id == "work"]
+    assert sorted(work.detail["workspaces"]) == ["0", "1", "2"]
+    assert {"diff.task0", "diff.task1", "diff.task2"} <= set(work.detail["attachments"])

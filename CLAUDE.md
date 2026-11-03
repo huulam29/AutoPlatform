@@ -159,6 +159,13 @@ decision log (§12) when the user decides something.
   Conversation (`components/RunChat.tsx`), editor Start point; chat apps forward the thread
   (`/run <pipeline> <words>`, reply or `/say`, card buttons); Chat `run_message`; `helpdesk`
   template. `docs/phase-52.md`. Tested with fakes only.
+- Phase 53 (Spec Kit + as-built specs, user decisions 77-85): `.specify/` (constitution
+  1.0.0 -> 1.1.0) and `specs/001-005`, reverse-engineered with code references. Fixes: gate check
+  follows `on_exhausted`, `for_each` task records redacted, `env.deploy` named by attempt key;
+  retry refuses cancelled runs; clean effect failures go to the effect advisor (`advisor.py`,
+  installed by `serve`); journal has claims and cancels; `timeout` only on agents/actions;
+  host commands get `pass_env` only; off-localhost `serve` creates an API token; own checkout
+  per `for_each` task. `docs/phase-53.md`. The advisor is tested with fakes only.
 - Phase 26: Settings pages (Agents, Model sources, Models, MCP, Skills) have no side panel: a
   page header plus rows that open in place (`components/SettingsRows.tsx`). `docs/phase-26.md`.
 - Phase 28 (failure triage): `triage.py` classifies each failed run / node (auto, in `serve`)
@@ -180,7 +187,7 @@ uv sync                                    # .venv + dev deps (pytest, ruff)
 uv run pytest                              # all tests (~15 s; chaos ones are marked slow)
 uv run pytest -m "not slow"                # fast subset
 uv run ruff check . && uv run ruff format --check .
-git config core.hooksPath .githooks         # once per clone: pre-commit formats staged files + ruff check
+git config core.hooksPath .githooks         # once per clone: pre-commit refuses secrets, formats staged files + ruff check
 uv run python -m demo.chaos --jobs 50      # failure demo; --expect-clean for acceptance
 uv run python -m demo.chaos --target pipeline --jobs 50 --expect-clean
 uv run agentline validate examples/ticket-to-eod/pipeline.yaml
@@ -324,7 +331,7 @@ uv run python -m agentline.api.dev --pipelines examples --db /tmp/x.db --port 87
 - Code that looks a run's graph up passes the run: `app.graph(run.flow, run)` (scheduler, worker,
   review), so a run keeps the structure it started with across live reloads.
 - `agentline serve` runs automatic failure triage and run reviews, which call the real Chat
-  agent: `AGENTLINE_TRIAGE=off` and `AGENTLINE_REVIEW=off` (set by `tests/conftest.py` and
+  agent: `AGENTLINE_TRIAGE=off`, `AGENTLINE_REVIEW=off` and `AGENTLINE_ADVISOR=off` (set by `tests/conftest.py` and
   demo/e2e) keep tests from doing so.
 - Lineage `read` links record every execution's inputs per iteration (`list_artifact_links`):
   use them to replay a node (probes), not `resolve_inputs` (that's the latest outputs).

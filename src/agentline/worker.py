@@ -115,7 +115,7 @@ class Worker:
 
     def _claim(self) -> Execution | None:
         with self.app.ledger.tx() as tx:
-            return tx.claim_next(self.id, self.app.scheduler.clock(), self.lease_ttl)
+            return self.app.scheduler.claim(tx, self.id, self.lease_ttl)
 
     async def _execute(self, ex: Execution) -> None:
         sched = self.app.scheduler

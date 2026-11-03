@@ -92,7 +92,7 @@ def test_shell_idempotent_retries_after_crash(h: Harness, tmp_path: Path) -> Non
 
 def test_secrets_are_scrubbed_from_output(h: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GITHUB_TOKEN", "ghp_super_secret_value")
-    h.pipeline(shell_yaml('{ cmd: "echo token=$GITHUB_TOKEN" }'))
+    h.pipeline(shell_yaml('{ cmd: "echo token=$GITHUB_TOKEN", pass_env: [GITHUB_TOKEN] }'))
     run = h.submit("sh")
     h.drain()
     assert h.app.result(run, "step")["stdout_tail"] == "token=***\n"
@@ -324,3 +324,65 @@ def test_manual_retry_reruns_the_command(h: Harness) -> None:
     asyncio.run(h.app.retry(run))
     h.drain()
     assert h.status(run) == "done"  # not the failure recorded before the retry
+
+
+def test_manual_retry_redeploys(h: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A retry after a failed deploy must deploy again, not reuse the recorded failure."""
+    from agentline.actions import env as env_action
+
+    calls: list[str] = []
+    exit_code = {"deploy": 1}
+
+    async def fake_run(cmd: Any, **kw: Any) -> tuple[int, str, str]:
+        calls.append(str(cmd))
+        return (exit_code["deploy"] if "deploy" in str(cmd) else 0), "", ""
+
+    monkeypatch.setattr(env_action, "run_cmd", fake_run)
+    config = Config.from_dict({"environments": {"eod": {"deploy": "deploy {sha}", "test": "t"}}})
+    h.pipeline(DEPLOY_YAML.replace("out: deployment }", "out: deployment, max_attempts: 1 }"),
+               agent=fixed_branch("f", "abc123"), config=config)  # fmt: skip
+    run = h.submit("ship")
+    ship(h, run)
+    assert h.status(run) == "dead" and calls == ["deploy abc123"]
+    exit_code["deploy"] = 0  # the environment was fixed
+    asyncio.run(h.app.retry(run))
+    h.drain()
+    assert h.status(run) == "done"
+    assert calls == ["deploy abc123", "deploy abc123", "t"]
+    audits = [a.detail for a in h.app.audit_log(run) if a.action == "deploy"]
+    assert [(a["effect"], a["exit_code"]) for a in audits] == [("deploy#1", 1), ("deploy#r1.1", 0)]
+
+
+def test_host_commands_see_only_basics_and_what_they_declare(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agentline.actions._util import command_env, pass_env_names
+
+    monkeypatch.setenv("SOME_API_TOKEN", "not-for-commands")
+    monkeypatch.setenv("DEPLOY_REGION", "eu")
+    env = command_env({"X": "1"}, ["DEPLOY_REGION", "UNSET_NAME"])
+    assert env["X"] == "1" and env["DEPLOY_REGION"] == "eu"
+    assert "SOME_API_TOKEN" not in env and "UNSET_NAME" not in env
+    assert "SOME_API_TOKEN" not in command_env()
+    assert pass_env_names("ONE", "w") == ["ONE"] and pass_env_names(None, "w") == []
+    with pytest.raises(PermanentError, match="pass_env"):
+        pass_env_names({"a": 1}, "shell.run")
+
+
+def test_deploy_passes_only_the_env_pass_env(h: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    from agentline.actions import env as env_action
+
+    seen: list[list[str]] = []
+
+    async def fake_run(cmd: Any, **kw: Any) -> tuple[int, str, str]:
+        seen.append(list(kw.get("pass_env") or ()))
+        return 0, "", ""
+
+    monkeypatch.setattr(env_action, "run_cmd", fake_run)
+    eod = {"deploy": "deploy {sha}", "test": "t", "pass_env": ["AWS_PROFILE"]}
+    h.pipeline(DEPLOY_YAML, agent=fixed_branch("f", "abc123"),
+               config=Config.from_dict({"environments": {"eod": eod}}))  # fmt: skip
+    run = h.submit("ship")
+    ship(h, run)
+    assert h.status(run) == "done"
+    assert seen == [["AWS_PROFILE"], ["AWS_PROFILE"]]  # deploy, then test

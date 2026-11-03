@@ -144,3 +144,45 @@ def test_dead_node_retry_keeps_done_tasks_and_api_counts(tmp_path: Path) -> None
     j = c.get(f"/api/runs/{sub.run_id}/journal").json()["journal"]
     assert any(e["kind"] == "retry" and "via app" in e["message"] for e in j)
     assert c.post("/api/runs/nope/retry", json={}).status_code == 404
+
+
+def test_task_records_and_journal_are_redacted(tmp_path: Path) -> None:
+    from agentline.redact import Redactor
+
+    secret = "fake-token-value-0123456789"
+    reg = Registry()
+
+    @reg.action("make.list")
+    async def make_list(ctx: Any, call: ActionCall) -> dict[str, Any]:
+        return {"items": [f"use {secret}", "b"]}
+
+    @reg.action("each")
+    async def each(ctx: Any, call: ActionCall) -> dict[str, Any]:
+        if call.params["i"] == "1":
+            raise RuntimeError(f"failed with {secret}")
+        return {"echo": secret}
+
+    src = """\
+name: fan
+nodes:
+  src: { type: action, uses: make.list, out: s }
+  work: { type: action, uses: each, in: [s], for_each: s.items, max_attempts: 1,
+          with: { i: "{{item_index}}" } }
+edges:
+  - src -> work
+"""
+    app = App(SqliteLedger(tmp_path / "l.db"), backoff_base=0.0,
+              redactor=Redactor({"FAKE_TOKEN": secret}))  # fmt: skip
+    app.register_pipeline(build_pipeline(parse_spec(src, base_dir=tmp_path), reg))
+    sub = app.submit_sync("fan", {})
+    drain(app)
+    assert app.get_run(sub.run_id).status == "dead"
+    with app.ledger.tx() as tx:
+        tasks = tx.list_tasks(sub.run_id)
+        journal = tx.list_journal(sub.run_id)
+    assert len(tasks) == 2
+    written = [str((t.item, t.result, t.error)) for t in tasks]
+    written += [j.message + str(j.detail) for j in journal]
+    assert not any(secret in w for w in written)
+    assert "[REDACTED:FAKE_TOKEN]" in str(tasks[0].result)
+    assert "[REDACTED:FAKE_TOKEN]" in str(tasks[1].error)

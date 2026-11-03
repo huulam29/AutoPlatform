@@ -6,14 +6,28 @@ __pycache__/
 *.db
 *.db-wal
 *.db-shm
+*.log
 chaos-out/
 dist/
-.env
 .claude/
 web/node_modules/
 web/dist/
 macos/build/
 macos/.build/
+
+# secrets and credentials (.githooks/pre-commit also refuses these if forced in with `git add -f`)
+.env
+.env.*
+!.env.example
+secrets.env
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+.netrc
+.pypirc
 
 # design-gate receipts (ux-ui kit gate.mjs): local, machine-specific
 web/.ds-receipts/
