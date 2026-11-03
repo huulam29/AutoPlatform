@@ -45,6 +45,12 @@ function fakeDeps(): { deps: ApplyDeps; calls: string[] } {
     chatUnlink: rec("chatUnlink", {}),
     chatNotify: rec("chatNotify", {}),
     native: rec("native", { path: "/p" }),
+    macApp: () => true, // the engine rows below are the Mac app's; browser cases set false
+    restartEngine: rec("restartEngine", {}),
+    setPipelinesDir: rec("setPipelinesDir", { pipelines_dir: "/srv/p", note: null, seeded: false }),
+    reveal: rec("reveal", {}),
+    exportReports: rec("exportReports", {}),
+    incidentSeen: rec("incidentSeen", {}),
     assistantApply: rec("assistantApply", { name: "dev/pipeline" }),
     exportPipeline: rec("exportPipeline", { filename: "dev.agentline.zip" }),
     importPipeline: rec("importPipeline", { name: "imported/pipeline", issues: [], applied: ["models.x"] }),

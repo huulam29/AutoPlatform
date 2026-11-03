@@ -9,6 +9,9 @@ import { ADD_HARNESS, chatDefaultModelLabel, chatModelOptions, modelAfterHarness
 import { AddHarnessDialog, AddHarnessOption } from "./AddHarness";
 import { saveBlob } from "../lib/download";
 import { isMacApp, nativeCall } from "../lib/native";
+import { useAppInfo } from "../lib/appinfo";
+import { restartEngine } from "../lib/engine";
+import { exportReports } from "./AppReports";
 import {
   actionDetails,
   actionTitle,
@@ -80,7 +83,13 @@ export const deps: ApplyDeps = {
   chatTest: api.chatTest,
   chatUnlink: api.chatUnlink,
   chatNotify: api.chatNotify,
-  native: (action) => nativeCall<{ path?: string }>(action),
+  native: (action, args) => nativeCall<{ path?: string; pipelinesDir?: string; configPath?: string }>(action, args),
+  macApp: isMacApp,
+  restartEngine,
+  setPipelinesDir: api.setPipelinesDir,
+  reveal: api.reveal,
+  exportReports,
+  incidentSeen: api.incidentSeen,
   assistantApply: api.assistantApply,
   exportPipeline: async (name) => {
     const { blob, filename } = await api.exportPipeline(name);
@@ -708,7 +717,9 @@ export function ActionCard({
   const invalid = a.issues.length > 0;
   const input = cardInput(a);
   const details = actionDetails(a);
-  const native = a.type === "engine" && !isMacApp();
+  const local = useAppInfo()?.can_reveal ?? false;
+  // reveal opens a file manager on the engine's machine: not from a browser elsewhere
+  const native = a.type === "engine" && a.op === "reveal" && !isMacApp() && !local;
   return (
     <div className={`action-card ${done ? "done" : ""}`}>
       <div className="action-head">
@@ -759,7 +770,7 @@ export function ActionCard({
           {i}
         </p>
       ))}
-      {native && <p className="small muted">This one needs the Mac app.</p>}
+      {native && <p className="small muted">This one works only on the engine's own machine.</p>}
       {error && <p className="issue small">{error}</p>}
       {!done && input === "secret" && (
         <input
@@ -768,6 +779,15 @@ export function ActionCard({
           value={value}
           placeholder="paste the key"
           aria-label={`value for ${"name" in a ? a.name : "the key"}`}
+          onChange={(e) => setValue(e.target.value)}
+        />
+      )}
+      {!done && input === "path" && (
+        <input
+          className="mono"
+          value={value}
+          placeholder="full folder path on the engine's machine"
+          aria-label="pipelines folder"
           onChange={(e) => setValue(e.target.value)}
         />
       )}
@@ -785,7 +805,7 @@ export function ActionCard({
           disabled={
             state === "applying" ||
             native ||
-            (input === "secret" && !value) ||
+            ((input === "secret" || input === "path") && !value.trim()) ||
             (input === "file" && !file) ||
             (invalid && a.type !== "pipeline")
           }
@@ -795,7 +815,7 @@ export function ActionCard({
               : undefined
           }
           onClick={() => {
-            onApply(input === "secret" ? { value } : input === "file" && file ? { file } : {});
+            onApply(input === "secret" || input === "path" ? { value } : input === "file" && file ? { file } : {});
             if (input === "secret") setValue("");
           }}
         >

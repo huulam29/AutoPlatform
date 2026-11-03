@@ -3,6 +3,8 @@
 // every poll, so re-rendering it would push what you're reading upward.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
+import { CopyPath } from "./CopyPath";
+import { useAppInfo } from "../lib/appinfo";
 import { LINE_COUNTS, filterLines, newSince, splitMatches, type LevelFilter } from "../lib/logs";
 import { isMacApp, nativeCall } from "../lib/native";
 
@@ -26,6 +28,7 @@ export function Logs() {
   const [level, setLevel] = useState<LevelFilter>("all");
   const [query, setQuery] = useState("");
   const box = useRef<HTMLPreElement>(null);
+  const info = useAppInfo();
 
   useEffect(() => {
     let live = true;
@@ -114,10 +117,12 @@ export function Logs() {
         <button type="button" onClick={() => void navigator.clipboard?.writeText(visible.map((l) => l.text).join("\n"))}>
           Copy
         </button>
-        {isMacApp() && (
+        {isMacApp() ? (
           <button type="button" onClick={() => void nativeCall("finder.dataFolder")}>
             Show Data Folder
           </button>
+        ) : (
+          info && <CopyPath path={info.data_folder} canReveal={info.can_reveal} target="data" label="Data folder" />
         )}
       </div>
       {pending > 0 && (
