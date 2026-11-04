@@ -602,6 +602,64 @@ def cmd_mirror(env: CliEnv, args: argparse.Namespace) -> int:
     return 0
 
 
+# -- people (spec 007) ------------------------------------------------------------------------
+def _token_out(env: CliEnv, name: str, token: str) -> None:
+    # straight to stdout: env.out would redact it once the redactor knows the value
+    print(f"token for {name} (shown once; send it to them privately):", file=env.stdout)
+    print(token, file=env.stdout)
+
+
+def cmd_users_add(env: CliEnv, args: argparse.Namespace) -> int:
+    from agentline.people import PeopleStore
+
+    person, token = PeopleStore().add(args.name, admin=args.admin)
+    env.app.audit("person.add", {"person": person.name, "admin": person.admin}, actor=env.actor)
+    _token_out(env, person.name, token)
+    return 0
+
+
+def cmd_users_list(env: CliEnv, args: argparse.Namespace) -> int:
+    from agentline.people import PeopleStore
+
+    rows = [p.public() for p in PeopleStore().list()]
+    if args.json:
+        env.out_json(rows)
+    elif not rows:
+        env.out("no people yet: agentline users add <name> [--admin]")
+    else:
+        for r in rows:
+            when = time.strftime("%Y-%m-%d", time.localtime(r["created_at"]))
+            env.out(f"{r['name']:<24} {'admin' if r['admin'] else '':<6} added {when}")
+    return 0
+
+
+def cmd_users_token(env: CliEnv, args: argparse.Namespace) -> int:
+    from agentline.people import PeopleStore
+
+    person, token = PeopleStore().reissue(args.name)
+    env.app.audit("person.token", {"person": person.name}, actor=env.actor)
+    _token_out(env, person.name, token)
+    return 0
+
+
+def cmd_users_admin(env: CliEnv, args: argparse.Namespace) -> int:
+    from agentline.people import PeopleStore
+
+    person = PeopleStore().set_admin(args.name, args.state == "on")
+    env.app.audit("person.admin", {"person": person.name, "admin": person.admin}, actor=env.actor)
+    env.out(f"{person.name}: {'admin' if person.admin else 'not admin'}")
+    return 0
+
+
+def cmd_users_revoke(env: CliEnv, args: argparse.Namespace) -> int:
+    from agentline.people import PeopleStore
+
+    person = PeopleStore().revoke(args.name)
+    env.app.audit("person.revoke", {"person": person.name}, actor=env.actor)
+    env.out(f"{person.name}: revoked")
+    return 0
+
+
 def cmd_audit(env: CliEnv, args: argparse.Namespace) -> int:
     entries = env.app.audit_log(args.run, args.limit)
     if args.json:

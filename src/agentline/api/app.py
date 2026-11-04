@@ -1,6 +1,6 @@
 """What the Mac app's native bridge answers, for a plain browser (spec 006).
 
-GET  /auth/check            {token_required, ok} for the candidate bearer token (no token
+GET  /auth/check            {token_required, ok, identity} for the bearer (no token
                             dependency: the sign-in screen asks it; never returns the token)
 GET  /app/info              version, folders, address, mac_app, local, token_required, ...
 POST /engine/restart        202, then `serve` restarts in place (same address); local or token
@@ -15,7 +15,6 @@ refused. Inside the Mac app (`AGENTLINE_PARENT_PID`) restart is refused too: the
 
 from __future__ import annotations
 
-import hmac
 import logging
 import os
 from pathlib import Path
@@ -25,8 +24,9 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 from pydantic import BaseModel
 
 from agentline import reveal as reveal_mod
+from agentline.api.identity import actor_of, resolve
 from agentline.api.settings import config_path
-from agentline.app import default_actor
+from agentline.people import PeopleStore
 from agentline.runmarker import in_mac_app
 
 log = logging.getLogger("agentline.api.app")
@@ -60,16 +60,18 @@ class RevealBody(BaseModel):
     target: str | None = None
 
 
-def create_auth_router(token: str | None) -> APIRouter:
+def create_auth_router(token: str | None, people: PeopleStore | None = None) -> APIRouter:
     router = APIRouter()
 
     @router.get("/auth/check")
     def check(request: Request) -> dict[str, Any]:
-        if not token:
-            return {"token_required": False, "ok": True}
-        given = _bearer(request)
-        ok = bool(given) and hmac.compare_digest(given.encode(), token.encode())
-        return {"token_required": True, "ok": ok}
+        """Is this bearer (a person's token or the shared one) accepted, and who is it?"""
+        who = resolve(_bearer(request), token, people, local=is_local_request(request))
+        return {
+            "token_required": bool(token),
+            "ok": who is not None,
+            "identity": who.as_dict() if who else None,
+        }
 
     return router
 
@@ -114,7 +116,7 @@ def create_app_router(files: Any, state: Any, token: str | None) -> APIRouter:
             raise HTTPException(409, "a restart is already under way")
         state.restart = True
         client = request.client.host if request.client else "unknown"
-        log.warning("engine restart asked by %s from %s", default_actor(), client)
+        log.warning("engine restart asked by %s from %s", actor_of(request), client)
         loop = getattr(state, "loop", None)
         if loop is not None:  # the stop event belongs to serve's event loop
             background.add_task(loop.call_soon_threadsafe, stop.set)

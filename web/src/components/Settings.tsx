@@ -25,14 +25,16 @@ import { AddHarnessDialog } from "./AddHarness";
 import { harnessStatus } from "../lib/models";
 import { OtherKeys } from "./settings/parts";
 import { McpSection } from "./Mcp";
+import { PeoplePage } from "./settings/PeoplePage";
 
-type Tab = "models" | "harnesses" | "mcp" | "chat" | "skills" | "general";
+type Tab = "models" | "harnesses" | "mcp" | "chat" | "skills" | "people" | "general";
 const TABS: { id: Tab; label: string }[] = [
   { id: "models", label: "Models" },
   { id: "harnesses", label: "Harnesses" },
   { id: "mcp", label: "MCP" },
   { id: "skills", label: "Skills" },
   { id: "chat", label: "Chat apps" },
+  { id: "people", label: "People" },
   { id: "general", label: "General" },
 ];
 
@@ -152,6 +154,7 @@ export function Settings({ onChanged }: { onChanged?: () => void }) {
           </GeneralSection>
         )}
         {tab === "skills" && <SkillsSection />}
+        {tab === "people" && <PeoplePage />}
       </div>
     </div>
   );

@@ -257,6 +257,11 @@ hit an unresolved decision. Tell the user if the lane changed and why. Never mov
   command palette (Cmd/Ctrl+K, `g` sequences), sign-in screen (`/api/auth/check`). `serve` holds
   `<home>/engine.lock` (`enginelock.py`) and `<home>/engine.run.json` (`runmarker.py`).
   `docs/phase-54.md`. Real notifications and file managers checked by hand only partly.
+- Phase 55 (named identities, spec 007, decision 90): per-person API tokens (`people.py`,
+  `<home>/people.json`, hashes only), `api/identity.py` resolves each request to a person,
+  `shared-token` or the local user; audited API routes take `actor_of(request)`, never
+  `default_actor()` (a test guards it). `/api/people`, `agentline users`, Settings > People, Chat
+  `person`, sign-in shows who you are. `docs/phase-55.md`. Chat links still record the OS user.
 - Phase 26: Settings pages (Agents, Model sources, Models, MCP, Skills) have no side panel: a
   page header plus rows that open in place (`components/SettingsRows.tsx`). `docs/phase-26.md`.
 - Phase 28 (failure triage): `triage.py` classifies each failed run / node (auto, in `serve`)

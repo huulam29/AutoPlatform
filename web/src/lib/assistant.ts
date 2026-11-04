@@ -4,6 +4,7 @@
 import { VERDICT_LABEL, type TriageRecord } from "./triage";
 import type { Lesson, Probe, ReviewRecord } from "./review";
 import { isMacApp } from "./native";
+import type { Person } from "./people";
 
 
 type Why = { why?: string };
@@ -75,6 +76,7 @@ export type MoreAction = (
   | { type: "review"; run: string }
   | { type: "probe"; review: string; index: number }
   | { type: "conversation"; op: "archive" | "unarchive"; id: string }
+  | { type: "person"; op: "add" | "token" | "admin" | "revoke"; name: string; admin?: boolean }
   | PipelineLessonAction
 ) &
   Why;
@@ -221,6 +223,14 @@ export function actionTitle(a: AssistantAction): string {
       return `Add a lesson for ${a.node} to ${a.pipeline}`;
     case "conversation":
       return `${a.op === "archive" ? "Archive" : "Unarchive"} the conversation ${a.id}`;
+    case "person":
+      return a.op === "add"
+        ? `Add ${a.name}${a.admin ? " as an admin" : ""}`
+        : a.op === "token"
+          ? `Issue a new token for ${a.name}`
+          : a.op === "admin"
+            ? `${a.admin ? "Make" : "Unmake"} ${a.name} admin`
+            : `Revoke ${a.name}`;
   }
 }
 
@@ -281,6 +291,12 @@ export function actionDetails(a: AssistantAction): string[] {
       return ["asks the Chat's model about the whole run; counts against the run's budget"];
     case "probe":
       return ["replays the node with the edit on the run's inputs and compares; counts against the run's budget"];
+    case "person":
+      return a.op === "add" || a.op === "token"
+        ? ["the token is shown here once, in a popup; it never goes to the Chat"]
+        : a.op === "revoke"
+          ? ["their token stops working at once"]
+          : [];
     default:
       return [];
   }
@@ -290,6 +306,7 @@ export function actionDetails(a: AssistantAction): string[] {
  * on something outside (a gate, the engine, a download) or delete something. */
 const OWN_CLICK = new Set([
   "key",
+  "person",
   "import",
   "export",
   "engine",
@@ -375,6 +392,10 @@ export interface ApplyDeps {
   reviewProbe(id: string, index: number): Promise<Probe>;
   lessonAdd(pipeline: string, body: Partial<Lesson> & { cue: string; lesson: string; node: string }): Promise<Lesson>;
   archiveConversation(id: string, archived: boolean): Promise<unknown>;
+  addPerson(name: string, admin: boolean): Promise<{ person: Person; token: string }>;
+  reissuePerson(name: string): Promise<{ person: Person; token: string }>;
+  setPersonAdmin(name: string, admin: boolean): Promise<unknown>;
+  revokePerson(name: string): Promise<unknown>;
 }
 
 export interface Applied {
@@ -392,6 +413,8 @@ export interface Applied {
   review?: ReviewRecord;
   /** a conversation was archived or unarchived: History reloads */
   conversations?: boolean;
+  /** a person's new token: shown once in a popup, never kept on the card or in history */
+  issuedToken?: { name: string; token: string };
 }
 
 /** Apply one proposal through the same API the GUI page uses. `input` is what the card
@@ -589,6 +612,18 @@ export async function applyAction(a: AssistantAction, deps: ApplyDeps, input: { 
     case "conversation":
       await deps.archiveConversation(a.id, a.op === "archive");
       return { conversations: true, result: a.op === "archive" ? "Archived (History > Archived)" : "Back in History" };
+    case "person": {
+      if (a.op === "add" || a.op === "token") {
+        const r = a.op === "add" ? await deps.addPerson(a.name, a.admin === true) : await deps.reissuePerson(a.name);
+        return { result: `Token for ${r.person.name} shown once (Settings > People)`, issuedToken: { name: r.person.name, token: r.token } };
+      }
+      if (a.op === "admin") {
+        await deps.setPersonAdmin(a.name, a.admin === true);
+        return { result: `${a.name} is ${a.admin ? "an admin" : "not an admin"}` };
+      }
+      await deps.revokePerson(a.name);
+      return { result: `${a.name} revoked; their token no longer works` };
+    }
   }
 }
 

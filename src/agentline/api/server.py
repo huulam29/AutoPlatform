@@ -5,8 +5,9 @@
 
 - Webhook routes (`/healthz`, `/webhooks/github`, `/webhooks/jira`) come from
   `api.webhooks.create_app` unchanged and keep their own signature/secret auth.
-- `/api/*` (editor + runs) requires `Authorization: Bearer <token>` when `token` (default
-  `$AGENTLINE_API_TOKEN`) is set; without a token the API is open, so bind to 127.0.0.1.
+- `/api/*` (editor + runs) resolves who is asking (`api.identity`): a person's own token
+  (`people.py`, spec 007), the shared `token` (default `$AGENTLINE_API_TOKEN`), or, with no
+  shared token set, the local user. Without a shared token the API is open, so bind to 127.0.0.1.
 - `/api/auth/check` (the sign-in screen) is outside the token check; `/api/app/*` and
   `/api/engine/restart` answer what the Mac app's native bridge does, for a browser
   (`api.app`). `serve` sets `server.state.stop`, `.loop`, `.address` and `.pipelines_from_cli`.
@@ -18,13 +19,12 @@
 from __future__ import annotations
 
 import asyncio
-import hmac
 import os
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -37,8 +37,10 @@ from agentline.api.dryrun import create_dryrun_router
 from agentline.api.editor import PipelineFiles, create_editor_router
 from agentline.api.github import create_github_router
 from agentline.api.history import create_history_router
+from agentline.api.identity import identity_dependency
 from agentline.api.incidents import create_incidents_router
 from agentline.api.issues import create_issues_router
+from agentline.api.people import create_people_router
 from agentline.api.reviews import create_reviews_router
 from agentline.api.runs import create_runs_router
 from agentline.api.settings import create_settings_router
@@ -50,6 +52,7 @@ from agentline.app import App
 from agentline.config import Config
 from agentline.incidents import IncidentStore
 from agentline.issues import IssueStore
+from agentline.people import PeopleStore
 from agentline.registry import Registry
 
 DEFAULT_STATIC = Path(__file__).resolve().parents[3] / "web" / "dist"
@@ -79,20 +82,6 @@ def ensure_api_token(host: str) -> bool:
         return False
     set_secret(TOKEN_ENV, pysecrets.token_urlsafe(32))
     return True
-
-
-def _token_check(token: str | None) -> Any:
-    def check(request: Request) -> None:
-        if not token:
-            return
-        header = request.headers.get("authorization", "")
-        given = header[7:] if header.lower().startswith("bearer ") else ""
-        if not given or not hmac.compare_digest(given.encode(), token.encode()):
-            raise HTTPException(
-                401, "missing or bad bearer token", headers={"WWW-Authenticate": "Bearer"}
-            )
-
-    return check
 
 
 def create_server(
@@ -128,8 +117,11 @@ def create_server(
                 await asyncio.to_thread(files.changed, f"{request.method} {request.url.path}")
             return response
 
-    auth = [Depends(_token_check(token))]
-    server.include_router(create_auth_router(token), prefix="/api")
+    people = PeopleStore()
+    server.state.people = people
+    auth = [Depends(identity_dependency(token, people))]
+    server.include_router(create_auth_router(token, people), prefix="/api")
+    server.include_router(create_people_router(app, people), prefix="/api", dependencies=auth)
     server.include_router(
         create_app_router(files, server.state, token), prefix="/api", dependencies=auth
     )

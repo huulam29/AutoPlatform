@@ -116,6 +116,7 @@ The web Chat applies each card through the same API as its GUI page (`lib/assist
 | | probe a review's pipeline edit (run view: Probe, Probe again) | `probe` |
 | | add a lesson to the pipeline's lesson library (review card) | `pipeline_lesson` |
 | Chat history (phase 48) | archive / unarchive a past conversation (Chat > History) | `conversation` op archive / unarchive (ids from LIVE STATE CONVERSATIONS) |
+| People (phase 55) | add a person, issue a new token, make / unmake admin, revoke (Settings > People) | `person` op add / token / admin / revoke (names from LIVE STATE PEOPLE, admins only); a new token opens Studio's one-time popup and never reaches the Chat or chat apps |
 
 Read-only views (Logs, run journals, costs report, MCP and model tests) and Chat > History's
 open / New chat / search (they only change what the panel shows) have no card: the agent
