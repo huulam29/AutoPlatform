@@ -3119,3 +3119,72 @@ button.ri-main:active:not(:disabled) {
 .run-chat-new {
   align-self: center;
 }
+
+/* Phase 58: feedback, metrics, report, insights, telemetry */
+.feedback {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.feedback-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.feedback-head > span:first-child {
+  flex: 1;
+}
+.thumb[aria-pressed="true"] {
+  background: var(--surface-raised);
+  border-color: var(--accent-action);
+}
+.feedback-form {
+  display: flex;
+  gap: var(--space-1);
+  align-items: flex-end;
+}
+.feedback-form textarea {
+  flex: 1;
+}
+.feedback-list {
+  margin: 0;
+  padding-left: var(--space-4);
+}
+.metrics-kv {
+  margin-bottom: var(--space-2);
+}
+.metrics-table td,
+.metrics-table th,
+.insights-table td,
+.insights-table th {
+  white-space: nowrap;
+}
+.insights-table tr.on td {
+  background: var(--surface-raised);
+}
+.bar.adopted span {
+  background: var(--status-done);
+}
+.bar.adopted::after {
+  content: "▲";
+  font-size: var(--fs-micro);
+  color: var(--status-done);
+}
+.bar.adopted {
+  flex-direction: column;
+  justify-content: flex-end;
+}
+.report-text {
+  max-height: var(--size-report-max-h);
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  background: var(--surface-page);
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-control);
+  padding: var(--space-2);
+}
+.telemetry .field {
+  margin-bottom: var(--space-2);
+}

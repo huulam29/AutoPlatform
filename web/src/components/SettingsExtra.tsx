@@ -10,6 +10,7 @@ import { isMacApp, nativeCall, type AppInfo } from "../lib/native";
 import { NewRow, RowItem, Rows, SettingsPage } from "./SettingsRows";
 import type { HarnessPreset } from "../types";
 import { GitHubSetup } from "./GitHubSetup";
+import { TelemetrySetting } from "./TelemetrySetting";
 import { AddSkillsDialog } from "./settings/AddSkillsDialog";
 import type { InstalledFrom } from "../api";
 
@@ -794,6 +795,7 @@ export function GeneralSection({ children }: { children?: ReactNode }) {
         <a href="#/app-reports">App reports</a>: crash reports and other problems in agentline itself, ready to report on GitHub.
       </p>
       <GitHubSetup />
+      <TelemetrySetting />
       {info?.dev && <p className="small warn">Development mode: AGENTLINE_DEV_PYTHON is set.</p>}
       {isMacApp() && (
         <div className="row">

@@ -3,6 +3,7 @@
 // here and reloads when the assistant writes it.
 import { VERDICT_LABEL, type TriageRecord } from "./triage";
 import type { Lesson, Probe, ReviewRecord } from "./review";
+import { feedbackApi, requestReport, type Rating, type ReportFormat, type TelemetryStatus } from "./feedback";
 
 
 type Why = { why?: string };
@@ -74,6 +75,16 @@ export type MoreAction = (
   | { type: "review"; run: string }
   | { type: "probe"; review: string; index: number }
   | { type: "conversation"; op: "archive" | "unarchive"; id: string }
+  | { type: "feedback"; run: string; rating: Rating; comment?: string; node?: string | null }
+  | { type: "run_report"; run: string; format?: ReportFormat }
+  | {
+      type: "telemetry";
+      op?: "save" | "test";
+      enabled?: boolean;
+      endpoint?: string;
+      service_name?: string;
+      headers_secret?: string;
+    }
   | PipelineLessonAction
 ) &
   Why;
@@ -212,6 +223,12 @@ export function actionTitle(a: AssistantAction): string {
       return `Add a lesson for ${a.node} to ${a.pipeline}`;
     case "conversation":
       return `${a.op === "archive" ? "Archive" : "Unarchive"} the conversation ${a.id}`;
+    case "feedback":
+      return `Rate ${a.node ? `${a.node} of ` : ""}run ${a.run} ${a.rating === "up" ? "👍" : a.rating === "down" ? "👎" : "(withdraw)"}`;
+    case "run_report":
+      return `Open the report of run ${a.run}`;
+    case "telemetry":
+      return a.op === "test" ? "Test telemetry" : a.enabled === undefined ? "Change telemetry settings" : `Turn telemetry ${a.enabled ? "on" : "off"}`;
   }
 }
 
@@ -272,6 +289,17 @@ export function actionDetails(a: AssistantAction): string[] {
       return ["asks the Chat's model about the whole run; counts against the run's budget"];
     case "probe":
       return ["replays the node with the edit on the run's inputs and compares; counts against the run's budget"];
+    case "feedback":
+      return [
+        ...(a.comment ? [`comment: ${a.comment}`] : []),
+        ...(a.rating === "down" || a.comment ? ["the run gets reviewed with this feedback"] : []),
+      ];
+    case "telemetry":
+      return [
+        ...(a.endpoint ? [`collector: ${a.endpoint}`] : []),
+        ...(a.headers_secret ? [`headers from the secret ${a.headers_secret}`] : []),
+        ...(a.enabled ? ["finished runs are sent there: ids, statuses, times, costs and tokens; never prompts, outputs or comments"] : []),
+      ];
     default:
       return [];
   }
@@ -301,6 +329,7 @@ const OWN_CLICK = new Set([
   "github",
   "review",
   "probe",
+  "telemetry",
 ]);
 export function needsOwnClick(a: AssistantAction): boolean {
   return OWN_CLICK.has(a.type);
@@ -358,6 +387,11 @@ export interface ApplyDeps {
   reviewProbe(id: string, index: number): Promise<Probe>;
   lessonAdd(pipeline: string, body: Partial<Lesson> & { cue: string; lesson: string; node: string }): Promise<Lesson>;
   archiveConversation(id: string, archived: boolean): Promise<unknown>;
+  // phase 58 (default: lib/feedback.ts's client)
+  rate?(run: string, rating: Rating, comment?: string, node?: string | null): Promise<unknown>;
+  setTelemetry?(body: Partial<Pick<TelemetryStatus, "enabled" | "endpoint" | "service_name" | "headers_secret">>): Promise<TelemetryStatus>;
+  testTelemetry?(): Promise<{ ok: boolean; error?: string; status?: number }>;
+  openReport?(run: string, format: ReportFormat): void;
 }
 
 export interface Applied {
@@ -547,7 +581,31 @@ export async function applyAction(a: AssistantAction, deps: ApplyDeps, input: { 
     case "conversation":
       await deps.archiveConversation(a.id, a.op === "archive");
       return { conversations: true, result: a.op === "archive" ? "Archived (History > Archived)" : "Back in History" };
+    case "feedback":
+      await (deps.rate ?? feedbackApi.rate)(a.run, a.rating, a.comment ?? "", a.node ?? null);
+      return { run: a.run, result: a.rating === "down" || a.comment ? "Recorded; the run review will read it" : "Recorded" };
+    case "run_report":
+      (deps.openReport ?? openReportPage)(a.run, a.format ?? "md");
+      return { run: a.run, result: "Opened in the Run view" };
+    case "telemetry": {
+      if (a.op === "test") {
+        const r = await (deps.testTelemetry ?? feedbackApi.testTelemetry)();
+        if (!r.ok) throw new Error(r.error ?? "the collector didn't answer");
+        return { result: "The collector answered" };
+      }
+      const body = Object.fromEntries(
+        (["enabled", "endpoint", "service_name", "headers_secret"] as const).filter((k) => a[k] !== undefined).map((k) => [k, a[k]]),
+      );
+      const r = await (deps.setTelemetry ?? feedbackApi.setTelemetry)(body);
+      return { changed: "settings", result: r.enabled ? `Telemetry on: ${r.endpoint}` : "Telemetry off" };
+    }
   }
+}
+
+/** The run's page, with its report open (the Run view picks the request up). */
+function openReportPage(run: string, format: ReportFormat): void {
+  window.location.hash = `#/runs/${encodeURIComponent(run)}`;
+  requestReport(run, format);
 }
 
 /** "done: 5 nodes (plan done, deploy skipped)" */

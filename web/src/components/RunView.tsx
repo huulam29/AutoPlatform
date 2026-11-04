@@ -23,6 +23,7 @@ import {
   withRunState,
 } from "../lib/runs";
 import { Icon, Status, StatusIcon, groupIcon } from "./Icon";
+import { FeedbackBox, MetricsPanel } from "./RunFeedback";
 import type {
   ArtifactValue,
   Execution,
@@ -276,6 +277,10 @@ export function RunView({ id }: { id: string }) {
                   <ReviewPanel run={r.id} status={r.status} {...reviews} />
                 </div>
               )}
+              <div className="panel">
+                <FeedbackBox runId={r.id} />
+              </div>
+              <MetricsPanel runId={r.id} version={r.updated_at} />
               <ExecTable detail={detail} onPick={setNode} />
             </>
           )}
@@ -418,6 +423,9 @@ function NodeRun({
         )}
       </div>
       {msg && <p className="small muted">{msg}</p>}
+      {state.latest.status === "done" && (
+        <FeedbackBox runId={detail.run.id} node={nodeId} iteration={state.latest.iteration} />
+      )}
       <TriagePanel run={detail.run.id} node={nodeId} {...triage} status={state.latest.status} onRunChanged={onRetried} />
       {tasks.length > 0 && <TaskTable tasks={tasks} />}
       <Journal runId={detail.run.id} nodeId={nodeId} version={detail.run.updated_at} />

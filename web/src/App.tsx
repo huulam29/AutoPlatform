@@ -5,6 +5,7 @@ import { CollapseButton, SidePanel, panels, usePanelBreakpoint, usePanelCollapse
 import { Icon } from "./components/Icon";
 import { Approvals } from "./components/Approvals";
 import { Costs } from "./components/Costs";
+import { Insights } from "./components/Insights";
 import { Logs } from "./components/Logs";
 import { Problems } from "./components/Problems";
 import { Editor } from "./components/Editor";
@@ -25,6 +26,7 @@ type Route =
   | { view: "runs"; id?: string }
   | { view: "settings" }
   | { view: "costs" }
+  | { view: "insights" }
   | { view: "approvals" }
   | { view: "problems"; issue?: number }
   | { view: "logs" }
@@ -38,6 +40,7 @@ function parse(hash: string): Route {
   if (view === "runs") return { view: "runs", id: arg };
   if (view === "settings") return { view: "settings" };
   if (view === "costs") return { view: "costs" };
+  if (view === "insights") return { view: "insights" };
   if (view === "approvals") return { view: "approvals" };
   if (view === "problems") return { view: "problems", issue: arg && /^\d+$/.test(arg) ? Number(arg) : undefined };
   if (view === "logs") return { view: "logs" };
@@ -60,6 +63,7 @@ function useRoute(): Route {
 const ROUTE_PANELS: Record<Route["view"], PanelName[]> = {
   fix: [],
   costs: [],
+  insights: [],
   approvals: [],
   problems: [],
   logs: [],
@@ -186,6 +190,9 @@ export function App() {
           <a className={route.view === "lessons" ? "on" : ""} href="#/lessons" title="What run reviews learned about each pipeline">
             Lessons
           </a>
+          <a className={route.view === "insights" ? "on" : ""} href="#/insights" title="Trends of finished runs: time, cost, failures, ratings">
+            Insights
+          </a>
           <a className={route.view === "costs" ? "on" : ""} href="#/costs">
             Costs
           </a>
@@ -234,6 +241,10 @@ export function App() {
         ) : route.view === "logs" ? (
           <section className="content">
             <Logs />
+          </section>
+        ) : route.view === "insights" ? (
+          <section className="content">
+            <Insights />
           </section>
         ) : route.view === "costs" ? (
           <section className="content">

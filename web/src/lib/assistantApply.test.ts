@@ -71,6 +71,10 @@ function fakeDeps(): { deps: ApplyDeps; calls: string[] } {
     reviewProbe: rec("reviewProbe", { status: "done", verdict: "better", error: null } as unknown as Probe),
     lessonAdd: rec("lessonAdd", { id: 3 } as unknown as Lesson),
     archiveConversation: rec("archiveConversation", {}),
+    rate: rec("rate", {}),
+    setTelemetry: rec("setTelemetry", { enabled: true, endpoint: "http://c:4318" } as never),
+    testTelemetry: rec("testTelemetry", { ok: true }),
+    openReport: (...args: unknown[]) => void calls.push(["openReport", ...args].join(" ")),
   };
   return { deps, calls };
 }
@@ -129,6 +133,12 @@ const CASES: [Record<string, unknown>, string, Record<string, unknown>?][] = [
   [{ type: "probe", review: "v1", index: 0 }, "reviewProbe v1 0", { result: "Probe: better than the original (1 run)" }],
   [{ type: "conversation", op: "archive", id: "c-1" }, "archiveConversation c-1 true", { conversations: true, result: "Archived (History > Archived)" }],
   [{ type: "conversation", op: "unarchive", id: "c-1" }, "archiveConversation c-1 false", { conversations: true, result: "Back in History" }],
+  [{ type: "feedback", run: "r1", rating: "down", comment: "no tests" }, "rate r1 down no tests null", { run: "r1", result: "Recorded; the run review will read it" }],
+  [{ type: "feedback", run: "r1", rating: "up", node: "plan" }, "rate r1 up  plan", { result: "Recorded" }],
+  [{ type: "run_report", run: "r1" }, "openReport r1 md", { run: "r1" }],
+  [{ type: "run_report", run: "r1", format: "json" }, "openReport r1 json"],
+  [{ type: "telemetry", enabled: true, endpoint: "http://c:4318" }, 'setTelemetry {"enabled":true,"endpoint":"http://c:4318"}', { changed: "settings", result: "Telemetry on: http://c:4318" }],
+  [{ type: "telemetry", op: "test" }, "testTelemetry", { result: "The collector answered" }],
   [
     { type: "pipeline_lesson", pipeline: "dev/pipeline", node: "write", cue: "when x", lesson: "do y", confidence: "high", why: "w" },
     'lessonAdd dev/pipeline {"node":"write","cue":"when x","lesson":"do y","confidence":"high"}',

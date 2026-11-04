@@ -563,3 +563,6 @@ export type SkillPreview = {
   skills: { name: string; description: string; path: string; exists: string | null; installed_from: string | null }[];
   skipped: { path: string; reason: string }[];
 };
+
+// For feature modules that keep their client next to them (lib/feedback.ts).
+export { call as apiCall, raw as apiRaw };

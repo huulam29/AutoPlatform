@@ -149,6 +149,7 @@
   --size-issues-max: 140px;
   --size-img-max-w: 220px;
   --size-img-max-h: 160px;
+  --size-report-max-h: 60vh; /* the run report dialog's text */
   --size-thumb: 56px;
   --size-thumb-sm: 40px; /* the image on a transcript card */
   --size-map-key: 60px;
