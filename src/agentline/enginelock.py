@@ -27,6 +27,9 @@ from typing import IO, Any
 
 log = logging.getLogger("agentline.enginelock")
 LOCK_FILE = "engine.lock"
+# Windows locks are mandatory: lock one byte far past the content, so another process can still
+# read who holds the lock.
+_WIN_LOCK_OFFSET = 1 << 30
 
 
 class EngineLocked(RuntimeError):
@@ -44,7 +47,7 @@ def _try_lock(f: IO[str]) -> bool:
         if sys.platform == "win32":
             import msvcrt
 
-            f.seek(0)
+            os.lseek(f.fileno(), _WIN_LOCK_OFFSET, os.SEEK_SET)
             msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
         else:
             import fcntl
@@ -59,7 +62,7 @@ def _try_lock(f: IO[str]) -> bool:
 
 def _holder(path: Path) -> dict[str, Any]:
     with contextlib.suppress(OSError, ValueError):
-        data = json.loads(path.read_text() or "{}")
+        data = json.loads(path.read_text(encoding="utf-8") or "{}")
         if isinstance(data, dict):
             return data
     return {}
@@ -72,7 +75,7 @@ class EngineLock:
 
     def acquire(self, address: str, wait: float = 0.0) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        f = open(self.path, "a+")  # noqa: SIM115 (held open for the process's lifetime)
+        f = open(self.path, "a+", encoding="utf-8")  # noqa: SIM115 (held open for the process's lifetime)
         deadline = time.monotonic() + max(0.0, wait)
         while True:
             try:
@@ -88,7 +91,7 @@ class EngineLock:
                 held = _holder(self.path)
                 raise EngineLocked(held.get("pid"), held.get("address"))
             time.sleep(0.2)
-        # On Windows the locked byte can't be rewritten through another handle, so write here.
+        # The holder writes its own details (another handle couldn't on Windows).
         f.seek(0)
         f.truncate()
         f.write(json.dumps({"pid": os.getpid(), "address": address}))

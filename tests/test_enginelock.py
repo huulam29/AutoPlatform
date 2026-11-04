@@ -14,20 +14,25 @@ from agentline.enginelock import EngineLock, EngineLocked
 
 HOLD = textwrap.dedent(
     """
-    import sys, time
+    import os, sys, time
     from agentline.enginelock import EngineLock
     lock = EngineLock(sys.argv[1]); lock.acquire("http://127.0.0.1:9", wait=0)
-    print("held", flush=True)
+    print("held", os.getpid(), flush=True)
     time.sleep(float(sys.argv[2]))
     """
 )
 
 
 def hold(home: Path, seconds: float) -> subprocess.Popen[str]:
+    """The holder; `p.engine_pid` is its own pid (a venv's python.exe on Windows is a launcher
+    whose pid isn't the interpreter's)."""
     p = subprocess.Popen(
         [sys.executable, "-c", HOLD, str(home), str(seconds)], stdout=subprocess.PIPE, text=True
     )
-    assert p.stdout is not None and p.stdout.readline().strip() == "held"
+    assert p.stdout is not None
+    word, pid = p.stdout.readline().split()
+    assert word == "held"
+    p.engine_pid = int(pid)  # type: ignore[attr-defined]
     return p
 
 
@@ -36,8 +41,8 @@ def test_a_second_process_is_refused_and_named(tmp_path: Path) -> None:
     try:
         with pytest.raises(EngineLocked) as e:
             EngineLock(tmp_path).acquire("http://127.0.0.1:1")
-        assert e.value.pid == p.pid and e.value.address == "http://127.0.0.1:9"
-        assert f"pid {p.pid}" in str(e.value)
+        assert e.value.pid == p.engine_pid and e.value.address == "http://127.0.0.1:9"
+        assert f"pid {p.engine_pid}" in str(e.value)
     finally:
         p.kill()
         p.wait()
