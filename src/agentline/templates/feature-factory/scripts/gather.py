@@ -4,7 +4,7 @@
 import json
 import os
 
-with open(os.environ["AGENTLINE_INPUTS"]) as f:
+with open(os.environ["AGENTLINE_INPUTS"], encoding="utf-8") as f:
     inputs = json.load(f)
 reviews = {
     k: inputs.get(k) or {} for k in ("security_review", "ux_review", "ui_review", "code_review")

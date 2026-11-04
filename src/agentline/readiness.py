@@ -61,6 +61,7 @@ def claude_login(cfg: Config | None, fresh: bool = False) -> dict[str, Any]:
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=20,
         )
         status = json.loads(proc.stdout)

@@ -262,6 +262,10 @@ hit an unresolved decision. Tell the user if the lane changed and why. Never mov
   `shared-token` or the local user; audited API routes take `actor_of(request)`, never
   `default_actor()` (a test guards it). `/api/people`, `agentline users`, Settings > People, Chat
   `person`, sign-in shows who you are. `docs/phase-55.md`. Chat links still record the OS user.
+- Phase 56 (native Windows): the engine and the fast suite run on native Windows. `filelock.py`
+  (flock / msvcrt), `proctree.py` (`kill_tree`, PATHEXT lookup for `claude.cmd`), `fsutil.rmtree`,
+  `encoding="utf-8"` on every text open, Windows `SAFE_ENV` names, `.gitattributes` LF.
+  `docs/phase-56.md`.
 - Phase 26: Settings pages (Agents, Model sources, Models, MCP, Skills) have no side panel: a
   page header plus rows that open in place (`components/SettingsRows.tsx`). `docs/phase-26.md`.
 - Phase 28 (failure triage): `triage.py` classifies each failed run / node (auto, in `serve`)
@@ -392,8 +396,8 @@ uv run python -m agentline.api.dev --pipelines examples --db /tmp/x.db --port 87
   `~/.agentline` is never touched; `App()` loads `$AGENTLINE_HOME/secrets.env`.
 - The repo path may contain spaces: shell-quote paths in generated scripts and command strings.
 - Tests are sync and call `asyncio.run(...)` (no pytest-asyncio dependency).
-- On this Windows build machine the engine needs WSL (`fcntl`): run pytest in a Linux clone of the
-  branch (the Windows checkout has CRLF endings, which break `tests/api/test_editor.py`).
+- On this Windows build machine pytest runs natively since phase 56; WSL (a Linux clone) is
+  still the check for POSIX-only paths.
 - `ruff check --fix` can delete `except ... as e` bindings used only inside lambdas; bind to a
   local (`msg = str(e)`) before the lambda.
 - `Worker.run_until_idle()` waits until no execution is ready/running/failed in the whole

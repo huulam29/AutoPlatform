@@ -46,7 +46,7 @@ def test_new_copies_and_validates(cli: Cli, name: str) -> None:
 def test_new_substitutes_name_and_copies_files(cli: Cli) -> None:
     dest = cli.root / "pipelines2"
     cli.ok("new", "ticket-to-eod", str(dest), "--name", "acme-eod")
-    assert sorted(str(p.relative_to(dest)) for p in dest.rglob("*") if p.is_file()) == [
+    assert sorted(p.relative_to(dest).as_posix() for p in dest.rglob("*") if p.is_file()) == [
         "acme-eod/pipeline.yaml",
         "acme-eod/prompts/implement.md",
         "acme-eod/prompts/plan.md",

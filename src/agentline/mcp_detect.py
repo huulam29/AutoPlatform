@@ -56,7 +56,7 @@ class Found:
 # -- reading the sources ----------------------------------------------------------------------
 def _json(path: Path) -> dict[str, Any] | None:
     try:
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     return data if isinstance(data, dict) else None
@@ -90,7 +90,7 @@ def _sources(home: Path, project_dirs: list[Path]) -> list[tuple[str, str, Path,
     codex = codex_home / "config.toml"
     if codex.is_file():
         try:
-            servers = tomllib.loads(codex.read_text()).get("mcp_servers") or {}
+            servers = tomllib.loads(codex.read_text(encoding="utf-8")).get("mcp_servers") or {}
             out.append(("codex", "Codex", codex, {k: _from_codex(v) for k, v in servers.items()}))
         except (OSError, tomllib.TOMLDecodeError):
             pass

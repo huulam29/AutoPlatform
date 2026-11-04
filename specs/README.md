@@ -63,6 +63,7 @@ These areas have code but no spec. Nothing below was read closely for this pass.
   tests all passed. The failures were in `tests/actions`, `tests/runners`, `tests/safety` and
   `tests/workspaces`. Those sampled were POSIX-only causes (`.sh` fake binaries, `os.killpg`,
   `os.getuid`, shell commands, Windows paths in test YAML), but not all 54 were examined. They need
-  a run on macOS or Linux before they count as evidence.
+  a run on macOS or Linux before they count as evidence. Phase 56 (`docs/phase-56.md`) later
+  made the whole fast suite pass on native Windows, with no stub.
 - The chaos runs (`demo.chaos`, `demo.e2e`) were not run. Where a success criterion cites one, it is
   quoting `CLAUDE.md`.

@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from tests.cli.helpers import Cli
+from tests.fakebin import fake_bin
 
 FAKE_CLAUDE = Path(__file__).resolve().parents[1] / "runners" / "fake_claude.py"
 
@@ -104,9 +104,7 @@ def test_anthropic_runner_refuses_at_zero_remaining(
 
 @pytest.fixture
 def claude(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[str, Path]:
-    wrapper = tmp_path / "claude"
-    wrapper.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{FAKE_CLAUDE}" "$@"\n')
-    wrapper.chmod(0o755)
+    wrapper = fake_bin(tmp_path, "claude", script=FAKE_CLAUDE)
     log = tmp_path / "claude-argv.json"
     monkeypatch.setenv("FAKE_CLAUDE_LOG", str(log))
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test-not-real")

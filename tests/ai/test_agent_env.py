@@ -5,24 +5,20 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import shlex
-import sys
 from pathlib import Path
 
 import pytest
 
 from agentline.registry import Limits, RunRequest
 from agentline.runners.claude_code import ClaudeCodeRunner
+from tests.fakebin import fake_bin
 
 FAKE = Path(__file__).resolve().parents[1] / "runners" / "fake_claude.py"
 
 
 def run(tmp_path: Path, params: dict[str, object]) -> dict[str, object]:
     log = tmp_path / "argv.json"
-    wrapper = tmp_path / "claude"
-    py, fake = shlex.quote(sys.executable), shlex.quote(str(FAKE))
-    wrapper.write_text(f'#!/bin/sh\nexec {py} {fake} "$@"\n')
-    wrapper.chmod(0o755)
+    wrapper = fake_bin(tmp_path, "claude", script=FAKE)
     p = {"bin": str(wrapper), **params}
     p["env"] = [*list(p.get("env") or []), "FAKE_CLAUDE_LOG"]  # type: ignore[call-overload]
     os.environ["FAKE_CLAUDE_LOG"] = str(log)

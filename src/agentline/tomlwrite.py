@@ -234,9 +234,11 @@ def delete_table(text: str, section: str, name: str) -> str:
 def write_file(path: Path, text: str) -> None:
     """Atomic replace, keeping a `.bak` of the previous version."""
     if path.exists():
-        path.with_name(path.name + ".bak").write_text(path.read_text())
+        path.with_name(path.name + ".bak").write_text(
+            path.read_text(encoding="utf-8"), encoding="utf-8"
+        )
     tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_text(text)
+    tmp.write_text(text, encoding="utf-8")
     os.replace(tmp, path)
 
 

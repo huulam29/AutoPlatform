@@ -89,7 +89,7 @@ def devcontainer_image(worktree: Path) -> str | None:
     for rel in (".devcontainer/devcontainer.json", ".devcontainer.json"):
         p = worktree / rel
         if p.is_file():
-            text = p.read_text(errors="replace")
+            text = p.read_text(errors="replace", encoding="utf-8")
             for candidate in (text, _strip_jsonc(text)):
                 try:
                     data = json.loads(candidate)
@@ -168,7 +168,7 @@ def resolve_image(
         return ImageChoice(dev, "devcontainer", markers=markers)
     df = worktree / "Dockerfile.agentline"
     if df.is_file():
-        text = df.read_text(errors="replace")
+        text = df.read_text(errors="replace", encoding="utf-8")
         tag = image_tag(repo_name, {"dockerfile.agentline": text})
         return ImageChoice(tag, "dockerfile", None, markers, text, worktree)
     profile = profile_for_markers(markers)

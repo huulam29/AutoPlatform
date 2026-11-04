@@ -706,7 +706,7 @@ class _Parser:
                 f"looked in {self.base_dir}",
             )
             return None, file
-        return target.read_text(), file
+        return target.read_text(encoding="utf-8"), file
 
     def _schema(self, raw: Any, p: str) -> dict[str, Any] | None:
         v = raw.get("output_schema")
@@ -724,7 +724,7 @@ class _Parser:
                 )
                 return None
             try:
-                schema = json.loads(target.read_text())
+                schema = json.loads(target.read_text(encoding="utf-8"))
             except json.JSONDecodeError as e:
                 self.issue(
                     f"{p}.output_schema",
@@ -867,4 +867,4 @@ def parse_spec(
 
 def load_spec(path: str | Path) -> PipelineSpec:
     p = Path(path)
-    return parse_spec(p.read_text(), path=p)
+    return parse_spec(p.read_text(encoding="utf-8"), path=p)

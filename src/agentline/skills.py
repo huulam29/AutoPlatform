@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 from agentline.errors import ValidationError
+from agentline.fsutil import rmtree
 
 DEFAULT_REPO = "addyosmani/agent-skills"
 DEFAULT_REF = "main"
@@ -76,7 +77,9 @@ class Skill:
 
     @property
     def body(self) -> str:
-        return (self.path / "SKILL.md").read_text(errors="replace")[:MAX_SKILL_BYTES]
+        return (self.path / "SKILL.md").read_text(errors="replace", encoding="utf-8")[
+            :MAX_SKILL_BYTES
+        ]
 
 
 BUILTIN_DIR = Path(__file__).parent / "builtin_skills"
@@ -115,7 +118,7 @@ class SkillLibrary:
     def info(self) -> dict[str, Any]:
         meta: dict[str, Any] = {}
         with contextlib.suppress(OSError, ValueError):
-            meta = json.loads((self.dir / "source.json").read_text())
+            meta = json.loads((self.dir / "source.json").read_text(encoding="utf-8"))
         return {
             "repo": self.repo,
             "dir": str(self.dir),
@@ -143,7 +146,7 @@ class SkillLibrary:
             md = d / "SKILL.md"
             if not d.is_dir() or not md.is_file() or not NAME.match(d.name):
                 continue
-            fm = _frontmatter(md.read_text(errors="replace")[:8000])
+            fm = _frontmatter(md.read_text(errors="replace", encoding="utf-8")[:8000])
             out[d.name] = Skill(d.name, fm.get("description", ""), d, source)
         return out
 
@@ -167,7 +170,7 @@ class SkillLibrary:
         desc = " ".join(description.split())
         text = f"---\nname: {name}\ndescription: {desc}\n---\n\n{body.strip()}\n"
         tmp = d / ".SKILL.md.tmp"
-        tmp.write_text(text)
+        tmp.write_text(text, encoding="utf-8")
         os.replace(tmp, d / "SKILL.md")
         return Skill(name, desc, d, "local")
 
@@ -175,7 +178,7 @@ class SkillLibrary:
         d = self.local_dir / name
         if not NAME.match(name) or not (d / "SKILL.md").is_file():
             return False
-        shutil.rmtree(d)
+        rmtree(d)
         return True
 
     def get(self, name: str) -> Skill | None:
@@ -234,19 +237,20 @@ class SkillLibrary:
             if not (tmp / "skills").is_dir():
                 raise ValidationError(f"{self.repo}@{ref} has no skills/ folder")
             (tmp / "source.json").write_text(
-                json.dumps({"repo": self.repo, "ref": ref, "fetched_at": time.time()})
+                json.dumps({"repo": self.repo, "ref": ref, "fetched_at": time.time()}),
+                encoding="utf-8",
             )
             old = self.dir.with_name(self.dir.name + ".old")
             if old.exists():
-                shutil.rmtree(old)
+                rmtree(old)
             if self.dir.exists():
                 os.replace(self.dir, old)
             os.replace(tmp, self.dir)
             if old.exists():
-                shutil.rmtree(old)
+                rmtree(old)
         finally:
             if tmp.exists():
-                shutil.rmtree(tmp, ignore_errors=True)
+                rmtree(tmp, ignore_errors=True)
         return {**self.info(), "count": len(self.list())}
 
 
@@ -258,7 +262,7 @@ def install_into(workspace_path: Path, skills: list[Skill]) -> list[str]:
     for s in skills:
         dest = dest_root / s.name
         if dest.exists():
-            shutil.rmtree(dest)
+            rmtree(dest)
         shutil.copytree(s.path, dest, symlinks=False)
         out.append(s.name)
     _git_exclude(workspace_path, "/.claude/skills/")
@@ -269,7 +273,7 @@ def _git_exclude(path: Path, pattern: str) -> None:
     try:
         r = subprocess.run(
             ["git", "-C", str(path), "rev-parse", "--git-path", "info/exclude"],
-            capture_output=True, text=True, timeout=10, check=False,
+            capture_output=True, text=True, encoding="utf-8", timeout=10, check=False,
         )  # fmt: skip
     except (OSError, subprocess.TimeoutExpired):
         return
@@ -279,11 +283,12 @@ def _git_exclude(path: Path, pattern: str) -> None:
     if not exclude.is_absolute():
         exclude = path / exclude
     try:
-        text = exclude.read_text() if exclude.exists() else ""
+        text = exclude.read_text(encoding="utf-8") if exclude.exists() else ""
         if pattern not in text.splitlines():
             exclude.parent.mkdir(parents=True, exist_ok=True)
             exclude.write_text(
-                text + ("" if not text or text.endswith("\n") else "\n") + pattern + "\n"
+                text + ("" if not text or text.endswith("\n") else "\n") + pattern + "\n",
+                encoding="utf-8",
             )
     except OSError:
         pass

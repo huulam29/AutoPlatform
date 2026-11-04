@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from agentline.errors import ValidationError
+from agentline.fsutil import rmtree
 from agentline.skills import NAME, SkillLibrary
 
 MAX_TARBALL = 50_000_000
@@ -215,7 +216,7 @@ def _meta(md: Path) -> dict[str, Any]:
     from ruamel.yaml import YAML
     from ruamel.yaml.error import YAMLError
 
-    text = md.read_text(errors="replace")[:20_000]
+    text = md.read_text(errors="replace", encoding="utf-8")[:20_000]
     if not text.startswith("---"):
         return {}
     end = text.find("\n---", 3)
@@ -310,7 +311,7 @@ def lock_path(lib: SkillLibrary) -> Path:
 def installed(lib: SkillLibrary) -> dict[str, dict[str, Any]]:
     """name -> {source, repo, ref, path, sha, installed_at} for skills installed here."""
     try:
-        data = json.loads(lock_path(lib).read_text())
+        data = json.loads(lock_path(lib).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
     return {k: v for k, v in data.items() if isinstance(v, dict)} if isinstance(data, dict) else {}
@@ -319,7 +320,7 @@ def installed(lib: SkillLibrary) -> dict[str, dict[str, Any]]:
 def _write_lock(lib: SkillLibrary, data: dict[str, dict[str, Any]]) -> None:
     lib.base.mkdir(parents=True, exist_ok=True)
     tmp = lock_path(lib).with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+    tmp.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     os.replace(tmp, lock_path(lib))
 
 
@@ -342,13 +343,13 @@ def _copy_in(lib: SkillLibrary, f: Found) -> None:
         dest = lib.installed_dir / f.name
         old = lib.installed_dir / f".old-{f.name}"
         if old.exists():
-            shutil.rmtree(old)
+            rmtree(old)
         if dest.exists():
             os.replace(dest, old)
         os.replace(tmp, dest)
-        shutil.rmtree(old, ignore_errors=True)
+        rmtree(old, ignore_errors=True)
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        rmtree(tmp, ignore_errors=True)
 
 
 def _fetch(src: Source, fresh: bool = False) -> tuple[Path, str]:
@@ -358,7 +359,7 @@ def _fetch(src: Source, fresh: bool = False) -> tuple[Path, str]:
     try:
         sha = unpack(data, tmp)
     except BaseException:
-        shutil.rmtree(tmp, ignore_errors=True)
+        rmtree(tmp, ignore_errors=True)
         raise
     return tmp, sha
 
@@ -371,7 +372,7 @@ def preview(text: str, lib: SkillLibrary | None = None) -> dict[str, Any]:
     try:
         found, skipped = discover(tmp, src)
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        rmtree(tmp, ignore_errors=True)
     have = {s.name: s.source for s in lib.list()}
     mine = installed(lib)
     return {
@@ -424,7 +425,7 @@ def install(text: str, names: list[str] | None = None, lib: SkillLibrary | None 
                 }
             _write_lock(lib, lock)
     finally:
-        shutil.rmtree(tmp, ignore_errors=True)
+        rmtree(tmp, ignore_errors=True)
     return {"source": src.label, "repo": src.slug, "sha": sha,
             "installed": [f.name for f in found]}  # fmt: skip
 
@@ -463,7 +464,7 @@ def update(lib: SkillLibrary | None = None, names: list[str] | None = None) -> d
                     _write_lock(lib, cur)
                 updated.append(n)
         finally:
-            shutil.rmtree(tmp, ignore_errors=True)
+            rmtree(tmp, ignore_errors=True)
     return {"updated": updated, "missing": missing}
 
 
@@ -472,7 +473,7 @@ def remove(lib: SkillLibrary, name: str) -> bool:
     if not NAME.match(name) or not (d / "SKILL.md").is_file():
         return False
     with _install_lock:
-        shutil.rmtree(d)
+        rmtree(d)
         lock = installed(lib)
         lock.pop(name, None)
         _write_lock(lib, lock)

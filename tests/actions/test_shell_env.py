@@ -12,6 +12,7 @@ from agentline.actions.env import substitute
 from agentline.config import Config
 from agentline.errors import PermanentError
 from agentline.registry import RunRequest
+from tests.fakebin import posix_shell
 
 from .conftest import Harness
 from .fakes import Repos
@@ -26,6 +27,7 @@ nodes:
 """
 
 
+@posix_shell
 def test_shell_run_success(h: Harness, tmp_path: Path) -> None:
     h.pipeline(shell_yaml('{ cmd: "echo hi $FOO; echo err >&2", env: { FOO: bar } }'))
     run = h.submit("sh")
@@ -35,6 +37,7 @@ def test_shell_run_success(h: Harness, tmp_path: Path) -> None:
     assert res["stdout_tail"] == "hi bar\n" and res["stderr_tail"] == "err\n"
 
 
+@posix_shell
 def test_shell_run_list_cmd_and_cwd(h: Harness, tmp_path: Path) -> None:
     h.pipeline(shell_yaml(f'{{ cmd: ["pwd"], cwd: "{tmp_path}" }}'))
     run = h.submit("sh")
@@ -42,6 +45,7 @@ def test_shell_run_list_cmd_and_cwd(h: Harness, tmp_path: Path) -> None:
     assert Path(h.app.result(run, "step")["stdout_tail"].strip()).resolve() == tmp_path.resolve()
 
 
+@posix_shell
 def test_shell_nonzero_retries_then_dies(h: Harness, tmp_path: Path) -> None:
     log = tmp_path / "count"
     h.pipeline(shell_yaml(f'{{ cmd: "echo x >> {log}; exit 3" }}', max_attempts=2))
@@ -53,6 +57,7 @@ def test_shell_nonzero_retries_then_dies(h: Harness, tmp_path: Path) -> None:
     assert h.effects(run) == {"step#1:run#1": "committed", "step#1:run#2": "committed"}
 
 
+@posix_shell
 def test_shell_permanent_failure(h: Harness, tmp_path: Path) -> None:
     log = tmp_path / "count"
     h.pipeline(shell_yaml(f'{{ cmd: "echo x >> {log}; exit 1", permanent: true }}', 3))
@@ -69,6 +74,7 @@ def test_shell_timeout(h: Harness) -> None:
     assert "timed out" in (h.execution(run, "step#1").error or "")
 
 
+@posix_shell
 def test_shell_crash_mid_run_halts(h: Harness, tmp_path: Path) -> None:
     log = tmp_path / "count"
     h.pipeline(shell_yaml(f'{{ cmd: "echo x >> {log}" }}'))
@@ -80,6 +86,7 @@ def test_shell_crash_mid_run_halts(h: Harness, tmp_path: Path) -> None:
     assert not log.exists()
 
 
+@posix_shell
 def test_shell_idempotent_retries_after_crash(h: Harness, tmp_path: Path) -> None:
     log = tmp_path / "count"
     h.pipeline(shell_yaml(f'{{ cmd: "echo x >> {log}", idempotent: true }}'))
@@ -90,6 +97,7 @@ def test_shell_idempotent_retries_after_crash(h: Harness, tmp_path: Path) -> Non
     assert log.read_text() == "x\n"
 
 
+@posix_shell
 def test_secrets_are_scrubbed_from_output(h: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GITHUB_TOKEN", "ghp_super_secret_value")
     h.pipeline(shell_yaml('{ cmd: "echo token=$GITHUB_TOKEN", pass_env: [GITHUB_TOKEN] }'))
@@ -147,6 +155,7 @@ def test_substitute_quotes_untrusted_values() -> None:
         substitute("d {sha}", {"sha": None})
 
 
+@posix_shell
 def test_deploy_substitution_and_test(h: Harness, tmp_path: Path) -> None:
     h.pipeline(
         DEPLOY_YAML, agent=fixed_branch("feat;echo pwned", "abc123"), config=eod_config(tmp_path)
@@ -168,6 +177,7 @@ def test_deploy_substitution_and_test(h: Harness, tmp_path: Path) -> None:
     }
 
 
+@posix_shell
 def test_failing_tests_are_a_result(h: Harness, tmp_path: Path) -> None:
     h.pipeline(
         DEPLOY_YAML,
@@ -193,6 +203,7 @@ def test_deploy_crash_check_finds_deployed_sha(h: Harness, tmp_path: Path) -> No
     assert h.app.result(run, "deploy")["verified_by"] == "check"
 
 
+@posix_shell
 def test_deploy_crash_check_mismatch_redeploys(h: Harness, tmp_path: Path) -> None:
     (tmp_path / "current").write_text("oldsha\n")
     h.pipeline(DEPLOY_YAML, agent=fixed_branch("f", "abc123"), config=eod_config(tmp_path))
@@ -269,6 +280,7 @@ def test_unknown_environment(h: Harness, tmp_path: Path) -> None:
     assert ex.status == "dead" and ex.attempt == 1 and "prod" in (ex.error or "")
 
 
+@posix_shell
 def test_script_next_to_the_pipeline_reads_inputs_and_returns_json(h: Harness) -> None:
     scripts = h.tmp / "scripts"
     scripts.mkdir(exist_ok=True)
@@ -314,6 +326,7 @@ def test_output_json_must_be_json(h: Harness) -> None:
     assert h.status(run) == "dead"
 
 
+@posix_shell
 def test_manual_retry_reruns_the_command(h: Harness) -> None:
     marker = h.tmp / "fixed"
     h.pipeline(shell_yaml(f'{{ cmd: "test -f {marker}" }}', max_attempts=1))

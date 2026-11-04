@@ -136,7 +136,7 @@ class TriageStore:
 
     def get(self, tid: str) -> dict[str, Any] | None:
         try:
-            return dict(json.loads(self._path(tid).read_text()))
+            return dict(json.loads(self._path(tid).read_text(encoding="utf-8")))
         except (KeyError, OSError, ValueError):
             return None
 
@@ -144,7 +144,7 @@ class TriageStore:
         self.root.mkdir(parents=True, exist_ok=True)
         rec["updated_at"] = time.time()
         fd, tmp = tempfile.mkstemp(dir=self.root, prefix=".triage.", suffix=".tmp")
-        with os.fdopen(fd, "w") as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(rec, f, indent=2, default=str)
         os.replace(tmp, self._path(str(rec["id"])))
         return rec
@@ -163,7 +163,7 @@ class TriageStore:
         out = []
         for p in self.root.glob("t*.json"):
             with contextlib.suppress(OSError, ValueError):
-                rec = json.loads(p.read_text())
+                rec = json.loads(p.read_text(encoding="utf-8"))
                 if isinstance(rec, dict) and (run is None or rec.get("run") == run):
                     out.append(rec)
         out.sort(key=lambda r: r.get("created_at", 0), reverse=True)
@@ -173,10 +173,10 @@ class TriageStore:
         """When automatic triage began in this data folder (set on first use)."""
         p = self.root / "state.json"
         with contextlib.suppress(OSError, ValueError):
-            return float(json.loads(p.read_text())["since"])
+            return float(json.loads(p.read_text(encoding="utf-8"))["since"])
         self.root.mkdir(parents=True, exist_ok=True)
         now = time.time()
-        p.write_text(json.dumps({"since": now}))
+        p.write_text(json.dumps({"since": now}), encoding="utf-8")
         return now
 
 
@@ -311,7 +311,7 @@ def _pipeline_file(files: Any, flow: str) -> tuple[Path, str] | None:
         hit = files.find_by_pipeline_name(flow)
         if hit:
             path = files.resolve(hit[0])
-            return path, path.read_text()
+            return path, path.read_text(encoding="utf-8")
     return None
 
 
@@ -334,7 +334,7 @@ def _node_files(path: Path, yaml_text: str, node: str | None) -> list[tuple[str,
         p = (path.parent / v).resolve()
         if p.is_file() and p.is_relative_to(path.parent.resolve()):
             with contextlib.suppress(OSError):
-                out.append((v, p.read_text()[:MAX_FILE]))
+                out.append((v, p.read_text(encoding="utf-8")[:MAX_FILE]))
     return out
 
 

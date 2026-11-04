@@ -80,7 +80,7 @@ def cmd_run(env: CliEnv, args: argparse.Namespace) -> int:
     target = _pipeline_for(env, args.pipeline)
     name = target if isinstance(target, str) else target.name
     if args.payload_file:
-        payload = _json_arg(Path(args.payload_file).read_text(), "--payload-file")
+        payload = _json_arg(Path(args.payload_file).read_text(encoding="utf-8"), "--payload-file")
     else:
         payload = _json_arg(args.payload, "--payload") if args.payload else {}
     sub = env.app.submit_sync(name, payload, args.dedupe_key)
@@ -159,8 +159,8 @@ async def _watch_parent(stop: asyncio.Event, interval: float = 1.0) -> None:
     """With AGENTLINE_PARENT_PID (set by the Mac app), stop when that process is gone, so a
     crashed or force-quit app never leaves an engine running on its own."""
     raw = os.environ.get("AGENTLINE_PARENT_PID", "")
-    if not raw.isdigit():
-        return
+    if not raw.isdigit() or sys.platform == "win32":
+        return  # Windows: os.kill(pid, 0) would terminate the parent, not probe it
     parent = int(raw)
     while not stop.is_set():
         try:
@@ -1037,7 +1037,9 @@ def cmd_incidents(env: CliEnv, args: argparse.Namespace) -> int:
         dest.mkdir(parents=True, exist_ok=True)
         items = store.list(100_000)
         for i in items:
-            (dest / f"{i['id']}.json").write_text(json.dumps(store.get(i["id"]), indent=2))
+            (dest / f"{i['id']}.json").write_text(
+                json.dumps(store.get(i["id"]), indent=2), encoding="utf-8"
+            )
             att = store.root / i["id"]
             if att.is_dir():
                 shutil.copytree(att, dest / i["id"], dirs_exist_ok=True)
@@ -1047,7 +1049,7 @@ def cmd_incidents(env: CliEnv, args: argparse.Namespace) -> int:
                 f"- **{i.get('title', '')}** ({i.get('source')}/{i.get('kind')}, x{i.get('count')},"
                 f" last {when(i.get('last_seen'))}, v{i.get('version')}) `{i['id']}`"
             )
-        (dest / "summary.md").write_text("\n".join(lines) + "\n")
+        (dest / "summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
         env.out(f"exported {len(items)} incident(s) to {dest}")
         return 0
     rec = store.get(args.target)

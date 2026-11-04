@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -16,15 +15,14 @@ from agentline.registry import Limits, RunRequest
 from agentline.runners import AiderRunner, RunnerError
 from agentline.runners.aider import build_argv, parse_output, tool_flags
 from agentline.runners.common import run_process
+from tests.fakebin import fake_bin
 
 FAKE = Path(__file__).with_name("fake_aider.py")
 
 
 @pytest.fixture
 def aider_bin(tmp_path: Path) -> str:
-    wrapper = tmp_path / "aider"
-    wrapper.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{FAKE}" "$@"\n')
-    wrapper.chmod(0o755)
+    wrapper = fake_bin(tmp_path, "aider", script=FAKE)
     return str(wrapper)
 
 

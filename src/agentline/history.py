@@ -38,6 +38,7 @@ def _git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProc
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         timeout=30,
         check=check,
     )
@@ -49,12 +50,14 @@ def _ensure(root: Path) -> None:
     root.mkdir(parents=True, exist_ok=True)
     subprocess.run(
         ["git", "init", "--quiet", "--bare", str(root / GIT_DIR)],
-        capture_output=True, text=True, timeout=30, check=True,
+        capture_output=True, text=True, encoding="utf-8", timeout=30, check=True,
     )  # fmt: skip
     _git(root, "config", "core.bare", "false")
     exclude = root / GIT_DIR / "info" / "exclude"
     exclude.parent.mkdir(parents=True, exist_ok=True)
-    exclude.write_text(f"/{GIT_DIR}/\n.DS_Store\n__pycache__/\nnode_modules/\n.*.tmp\n")
+    exclude.write_text(
+        f"/{GIT_DIR}/\n.DS_Store\n__pycache__/\nnode_modules/\n.*.tmp\n", encoding="utf-8"
+    )
 
 
 def record(root: str | Path, message: str) -> str | None:

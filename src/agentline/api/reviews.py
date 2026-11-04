@@ -56,7 +56,9 @@ class LessonBody(BaseModel):
 
 def _flow_of(files: Any, path: Path) -> str:
     with contextlib.suppress(Exception):
-        return str(files.model(path.read_text(), path, validate=False).get("name") or "")
+        return str(
+            files.model(path.read_text(encoding="utf-8"), path, validate=False).get("name") or ""
+        )
     return ""
 
 

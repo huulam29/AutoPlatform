@@ -154,7 +154,7 @@ def export_bundle(root: Path, path: Path, cfg: Config | None) -> tuple[bytes, st
     """(zip bytes, file name) for the pipeline file `path` under `root`."""
     root = root.resolve()
     path = path.resolve()
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     spec = parse_spec(text, path=path)
     base = path.parent
     if base != root:
@@ -315,7 +315,7 @@ def add_settings(cfg: Config | None, tables: dict[str, dict[str, Any]]) -> tuple
     if "agents" in tables:  # a bundle made before phase 35
         tables = {**tables, "harnesses": {**tables["agents"], **(tables.get("harnesses") or {})}}
     path = _config_path(cfg)
-    text = path.read_text() if path.exists() else ""
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
     added = []
     for section in SETTINGS_ORDER:
         for name, table in (tables.get(section) or {}).items():
@@ -361,7 +361,7 @@ def import_pipeline(
             files.config = Config.load(path)
             files.registry = default_registry(files.config)
     path = files.root / out["file"]
-    model = files.model(path.read_text(), path)
+    model = files.model(path.read_text(encoding="utf-8"), path)
     return {
         "name": files.name_of(path),
         "pipeline": out["manifest"].get("pipeline"),

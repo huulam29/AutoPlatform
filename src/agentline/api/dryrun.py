@@ -33,7 +33,7 @@ def create_dryrun_router(files: Any) -> APIRouter:
         text = (
             body.source
             if body.source is not None
-            else (path.read_text() if path.exists() else None)
+            else (path.read_text(encoding="utf-8") if path.exists() else None)
         )
         if text is None:
             raise HTTPException(404, f"no pipeline {body.name!r}")

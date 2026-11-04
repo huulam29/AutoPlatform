@@ -22,6 +22,7 @@ def free_port() -> int:
 
 
 @pytest.mark.slow
+@pytest.mark.skipif(sys.platform == "win32", reason="the parent watchdog is POSIX-only")
 def test_engine_stops_when_parent_dies(tmp_path: Path) -> None:
     (tmp_path / "pipelines").mkdir()
     port = free_port()
