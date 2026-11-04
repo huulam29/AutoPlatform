@@ -57,6 +57,11 @@ machines, every remote approval read as the person who started the server.
   person cases in `tests/ai/test_assistant_parity.py`, `web/src/lib/people.test.ts`, person
   cases in `web/src/lib/assistantApply.test.ts`.
 
+- Clicked through in a browser against a throwaway dev server with a shared token set: signed in
+  with a person's token (from `agentline users add --admin`), Settings > People said "You are
+  alice (admin)", Add person showed bob's token once, General said "signed in as alice (admin)",
+  and `agentline audit` named `alice` for adding bob; `people.json` was `-rw-------`.
+
 ## Not done
 
 - Roles: every identity keeps the powers the shared token has (settings, keys, pipelines). Only
@@ -64,6 +69,4 @@ machines, every remote approval read as the person who started the server.
 - Chat links still record the engine's OS user (`chatlink/service.py` uses `default_actor()`);
   naming the chat-app user is a follow-up.
 - The CLI still acts as `$AGENTLINE_USER` / `$USER`.
-- The People page and the sign-in flow with a personal token were not clicked through in a real
-  browser; they are covered by type checks and unit tests only.
 - The Mac app is unchanged (see the shared-token rule above); not run on a Mac in this phase.
