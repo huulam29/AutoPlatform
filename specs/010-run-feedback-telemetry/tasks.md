@@ -40,3 +40,15 @@ Spec: [spec.md](spec.md) · Plan: [plan.md](plan.md) · Contract: [contracts/api
 - [x] T021 Full checks: pytest + ruff in a WSL clone; `npm test`, `tsc --noEmit`, `npm run build`; hardcode lint for web styles
 
 Dependencies: T002 → T005-T008, T011-T019; T003 → T004, T008, T009, T016; T009 → T010, T018.
+
+## As built (differences from the list above)
+
+- Tests live in `tests/ai/test_feedback.py` (T002-T008, T011, T012: feedback, metrics, insights,
+  report, review trigger, API, CLI) and `tests/ai/test_telemetry.py` (T009), next to the review
+  tests whose `World` they reuse; T013 is in `tests/ai/test_chatlink.py`, T014 in
+  `tests/ai/test_assistant_parity.py`.
+- T015-T017: the client and helpers are `web/src/lib/feedback.ts` (+ `feedback.test.ts`); `api.ts`
+  only re-exports `call` / `raw`. `RunMetrics` and `RunReport` are `MetricsPanel` and
+  `ReportDialog` inside `components/RunFeedback.tsx`; there is no `lib/insights.ts`.
+- T021: the hardcode lint script (`lint_hardcodes.py` of the ux-ui kit) isn't on this machine, so
+  it wasn't run; new styles use theme tokens only (one new token, `--size-report-max-h`).
