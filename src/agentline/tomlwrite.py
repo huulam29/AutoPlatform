@@ -234,9 +234,11 @@ def delete_table(text: str, section: str, name: str) -> str:
 def write_file(path: Path, text: str) -> None:
     """Atomic replace, keeping a `.bak` of the previous version."""
     if path.exists():
-        path.with_name(path.name + ".bak").write_text(path.read_text())
+        path.with_name(path.name + ".bak").write_text(
+            path.read_text(encoding="utf-8"), encoding="utf-8"
+        )
     tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_text(text)
+    tmp.write_text(text, encoding="utf-8")
     os.replace(tmp, path)
 
 
@@ -277,4 +279,38 @@ def set_plain_table(text: str, section: str, table: dict[str, Any]) -> str:
     before.pop(section, None)
     if before != after or got != clean:
         raise ValidationError(f"can't rewrite [{section}] safely; edit agentline.toml by hand")
+    return new
+
+
+def set_top_level(text: str, key: str, value: Any) -> str:
+    """`text` with the top-level `key = value` (before any table header) replaced, or inserted
+    above the first table. Refuses when anything else would change."""
+    lines = text.splitlines(keepends=True)
+    first_table = next((i for i, ln in enumerate(lines) if header_keys(ln)), len(lines))
+    entry = f"{toml_key(key)} = {toml_value(value)}\n"
+    pattern = re.compile(rf"^\s*{re.escape(toml_key(key))}\s*=")
+    at = next((i for i in range(first_table) if pattern.match(lines[i])), None)
+    if at is not None:
+        lines[at] = entry
+    else:
+        k = first_table
+        while k > 0 and not lines[k - 1].strip():
+            k -= 1  # keep the blank line(s) above the first table where they are
+        block = [entry]
+        if k > 0 and not lines[k - 1].endswith("\n"):
+            lines[k - 1] += "\n"
+        if first_table < len(lines) and k == first_table:
+            block.append("\n")
+        lines[k:k] = block
+    new = "".join(lines)
+    try:
+        before, after = tomllib.loads(text), tomllib.loads(new)
+    except tomllib.TOMLDecodeError as e:
+        raise ValidationError(
+            f"can't rewrite agentline.toml safely ({e}); edit it by hand"
+        ) from None
+    got = after.pop(key, None)
+    before.pop(key, None)
+    if before != after or got != value:
+        raise ValidationError(f"can't set {key} safely; edit agentline.toml by hand")
     return new

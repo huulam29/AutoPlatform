@@ -66,7 +66,7 @@ def migrate(config_path: Path, pipelines_dir: Path) -> dict[str, Any]:
     try:
         out = _migrate(Path(config_path), Path(pipelines_dir))
         marker.parent.mkdir(parents=True, exist_ok=True)
-        marker.write_text("phase 44: only builtin is a built-in harness\n")
+        marker.write_text("phase 44: only builtin is a built-in harness\n", encoding="utf-8")
     except Exception:  # never stop the engine over this; the next start tries again
         log.exception("harness migration failed; it will be retried on the next start")
     return out
@@ -84,7 +84,7 @@ def _migrate(config_path: Path, pipelines_dir: Path) -> dict[str, Any]:
     fallback_files: list[Path] = []
     for f in pipeline_files(pipelines_dir):
         try:
-            doc = load_document(f.read_text())
+            doc = load_document(f.read_text(encoding="utf-8"))
         except Exception:
             continue  # a broken file: the editor reports it
         names, fallback = _relied_on_fallback(doc)
@@ -97,7 +97,7 @@ def _migrate(config_path: Path, pipelines_dir: Path) -> dict[str, Any]:
         used.add(str(choice["harness"]))
 
     cfg = Config.load(config_path) if config_path.exists() else Config(path=config_path)
-    text = config_path.read_text() if config_path.exists() else ""
+    text = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
     added = []
     for name in sorted(used):
         preset = ai.HARNESS_PRESETS.get(ai.harness_name(name, cfg) or name)
@@ -121,13 +121,13 @@ def _migrate(config_path: Path, pipelines_dir: Path) -> dict[str, Any]:
 
     given = []
     for f in fallback_files:
-        source = f.read_text()
+        source = f.read_text(encoding="utf-8")
         model = to_model(source, validate=False)
         model["defaults"] = {**(model.get("defaults") or {}), "harness": OLD_FALLBACK}
         new, _ = apply_model(source, model)
         if new != source:
             history.record(pipelines_dir, "before the harness migration")
-            f.write_text(new)
+            f.write_text(new, encoding="utf-8")
             history.record(pipelines_dir, f"harness migration: default harness {OLD_FALLBACK}")
             given.append(f.relative_to(pipelines_dir).as_posix())
     if given:

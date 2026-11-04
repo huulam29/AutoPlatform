@@ -90,6 +90,7 @@ def test_api_and_claude_code_gets_skills_installed(
     tmp_path: Path, isolated_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))  # Path.home() on Windows
     c, seen = _server(tmp_path, "claude-code")
     r = c.get("/api/chat-instructions").json()
     assert r["is_default"] and "interview-me" in r["text"]
@@ -116,6 +117,7 @@ def test_other_agents_get_the_named_skills_in_the_prompt(
     tmp_path: Path, isolated_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))  # Path.home() on Windows
     c, seen = _server(tmp_path, "aider")  # a CLI harness that can't load skill folders
     body: dict[str, Any] = {
         "harness": "aider",

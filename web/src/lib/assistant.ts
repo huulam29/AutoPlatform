@@ -4,6 +4,8 @@
 import { VERDICT_LABEL, type TriageRecord } from "./triage";
 import type { Lesson, Probe, ReviewRecord } from "./review";
 import { feedbackApi, requestReport, type Rating, type ReportFormat, type TelemetryStatus } from "./feedback";
+import { isMacApp } from "./native";
+import type { Person } from "./people";
 
 
 type Why = { why?: string };
@@ -56,7 +58,7 @@ export type MoreAction = (
   | { type: "mcp_import"; items: { id: string; name?: string }[] }
   | { type: "chat_app"; platform: string; op: "pair" | "test" | "unlink" }
   | { type: "chat_notify"; gates?: boolean; failures?: boolean; done?: boolean; questions?: boolean; reviews?: boolean }
-  | { type: "engine"; op: "restart" | "choose_folder" }
+  | { type: "engine"; op: "restart" | "choose_folder" | "reveal" | "export_reports"; path?: string; target?: "data" | "pipelines" | "config" }
   | { type: "export"; pipeline: string }
   | { type: "import"; folder?: string; overwrite?: boolean; apply_settings?: boolean }
   | { type: "dry_run"; pipeline: string; payload?: unknown; routes?: Record<string, string[]> }
@@ -66,7 +68,7 @@ export type MoreAction = (
   | { type: "run_message"; run: string; text: string }
   | { type: "gate"; run: string; node: string; decision: "approve" | "reject"; comment?: string }
   | { type: "issue"; number: number; status?: string | null; note?: string }
-  | { type: "incident"; op: "delete" | "clear"; id?: string }
+  | { type: "incident"; op: "delete" | "seen" | "clear"; id?: string }
   | { type: "budget"; monthly_usd: number | null }
   | { type: "triage"; run: string; node?: string }
   | { type: "lesson"; text: string }
@@ -85,6 +87,7 @@ export type MoreAction = (
       service_name?: string;
       headers_secret?: string;
     }
+  | { type: "person"; op: "add" | "token" | "admin" | "revoke"; name: string; admin?: boolean }
   | PipelineLessonAction
 ) &
   Why;
@@ -180,7 +183,15 @@ export function actionTitle(a: AssistantAction): string {
     case "chat_notify":
       return "Change chat notifications";
     case "engine":
-      return a.op === "restart" ? "Restart the engine" : "Choose the pipelines folder";
+      return a.op === "restart"
+        ? "Restart the engine"
+        : a.op === "reveal"
+          ? `Show the ${a.target ?? "data"} folder`
+          : a.op === "export_reports"
+            ? "Export the app reports"
+            : a.path
+              ? `Use ${a.path} as the pipelines folder`
+              : "Choose the pipelines folder";
     case "pipeline":
       return `${a.exists ? "Update" : "Create"} pipeline ${a.path}`;
     case "export":
@@ -204,7 +215,7 @@ export function actionTitle(a: AssistantAction): string {
     case "issue":
       return `Update issue #${a.number}`;
     case "incident":
-      return a.op === "clear" ? "Delete all crash reports" : `Delete crash report ${a.id}`;
+      return a.op === "clear" ? "Delete all crash reports" : a.op === "seen" ? `Mark crash report ${a.id} seen` : `Delete crash report ${a.id}`;
     case "budget":
       return a.monthly_usd == null ? "Remove the monthly budget" : `Set the monthly budget to $${a.monthly_usd}`;
     case "triage":
@@ -229,6 +240,14 @@ export function actionTitle(a: AssistantAction): string {
       return `Open the report of run ${a.run}`;
     case "telemetry":
       return a.op === "test" ? "Test telemetry" : a.enabled === undefined ? "Change telemetry settings" : `Turn telemetry ${a.enabled ? "on" : "off"}`;
+    case "person":
+      return a.op === "add"
+        ? `Add ${a.name}${a.admin ? " as an admin" : ""}`
+        : a.op === "token"
+          ? `Issue a new token for ${a.name}`
+          : a.op === "admin"
+            ? `${a.admin ? "Make" : "Unmake"} ${a.name} admin`
+            : `Revoke ${a.name}`;
   }
 }
 
@@ -300,6 +319,12 @@ export function actionDetails(a: AssistantAction): string[] {
         ...(a.headers_secret ? [`headers from the secret ${a.headers_secret}`] : []),
         ...(a.enabled ? ["finished runs are sent there: ids, statuses, times, costs and tokens; never prompts, outputs or comments"] : []),
       ];
+    case "person":
+      return a.op === "add" || a.op === "token"
+        ? ["the token is shown here once, in a popup; it never goes to the Chat"]
+        : a.op === "revoke"
+          ? ["their token stops working at once"]
+          : [];
     default:
       return [];
   }
@@ -309,6 +334,7 @@ export function actionDetails(a: AssistantAction): string[] {
  * on something outside (a gate, the engine, a download) or delete something. */
 const OWN_CLICK = new Set([
   "key",
+  "person",
   "import",
   "export",
   "engine",
@@ -336,7 +362,8 @@ export function needsOwnClick(a: AssistantAction): boolean {
 }
 
 /** What applying needs from the user on the card: a key's value, or a .zip to import. */
-export function cardInput(a: AssistantAction): "secret" | "file" | null {
+export function cardInput(a: AssistantAction): "secret" | "file" | "path" | null {
+  if (a.type === "engine" && a.op === "choose_folder" && !a.path && !isMacApp()) return "path";
   return a.type === "key" ? "secret" : a.type === "import" ? "file" : null;
 }
 
@@ -361,7 +388,14 @@ export interface ApplyDeps {
   chatTest(platform: string): Promise<unknown>;
   chatUnlink(platform: string): Promise<unknown>;
   chatNotify(prefs: Record<string, boolean>): Promise<unknown>;
-  native(action: string): Promise<{ path?: string }>;
+  native(action: string, args?: Record<string, unknown>): Promise<{ path?: string; pipelinesDir?: string; configPath?: string }>;
+  /** true inside the Mac app: engine ops go through the native bridge */
+  macApp(): boolean;
+  restartEngine(): Promise<unknown>;
+  setPipelinesDir(path: string): Promise<{ pipelines_dir: string; note: string | null; seeded: boolean }>;
+  reveal(where: { target: "data" | "pipelines" | "config" }): Promise<unknown>;
+  exportReports(): Promise<unknown>;
+  incidentSeen(id: string): Promise<unknown>;
   assistantApply(path: string, yaml: string, files: Record<string, string>): Promise<{ name: string }>;
   exportPipeline(name: string): Promise<{ filename: string }>;
   importPipeline(file: Blob, opts: { folder?: string; overwrite?: boolean; applySettings?: boolean }): Promise<{ name: string; issues: unknown[]; applied: string[] }>;
@@ -392,6 +426,10 @@ export interface ApplyDeps {
   setTelemetry?(body: Partial<Pick<TelemetryStatus, "enabled" | "endpoint" | "service_name" | "headers_secret">>): Promise<TelemetryStatus>;
   testTelemetry?(): Promise<{ ok: boolean; error?: string; status?: number }>;
   openReport?(run: string, format: ReportFormat): void;
+  addPerson(name: string, admin: boolean): Promise<{ person: Person; token: string }>;
+  reissuePerson(name: string): Promise<{ person: Person; token: string }>;
+  setPersonAdmin(name: string, admin: boolean): Promise<unknown>;
+  revokePerson(name: string): Promise<unknown>;
 }
 
 export interface Applied {
@@ -409,6 +447,8 @@ export interface Applied {
   review?: ReviewRecord;
   /** a conversation was archived or unarchived: History reloads */
   conversations?: boolean;
+  /** a person's new token: shown once in a popup, never kept on the card or in history */
+  issuedToken?: { name: string; token: string };
 }
 
 /** Apply one proposal through the same API the GUI page uses. `input` is what the card
@@ -483,8 +523,32 @@ export async function applyAction(a: AssistantAction, deps: ApplyDeps, input: { 
       return {};
     }
     case "engine": {
-      const r = await deps.native(a.op === "restart" ? "engine.restart" : "folder.choose");
-      return a.op === "restart" ? { result: "Restarting the engine" } : { result: r.path ? `Takes effect when the engine restarts: ${r.path}` : "No folder chosen" };
+      if (a.op === "restart") {
+        await (deps.macApp() ? deps.native("engine.restart") : deps.restartEngine());
+        return { result: "Restarting the engine" };
+      }
+      if (a.op === "export_reports") {
+        await (deps.macApp() ? deps.native("problems.export") : deps.exportReports());
+        return { result: "Exported the app reports" };
+      }
+      if (a.op === "reveal") {
+        const target = a.target ?? "data";
+        if (!deps.macApp()) await deps.reveal({ target });
+        else if (target === "data") await deps.native("finder.dataFolder");
+        else {
+          const info = await deps.native("app.info");
+          await deps.native("finder.reveal", { path: target === "pipelines" ? info.pipelinesDir : info.configPath });
+        }
+        return {};
+      }
+      if (deps.macApp()) {
+        const r = await deps.native("folder.choose");
+        return { result: r.path ? `Takes effect when the engine restarts: ${r.path}` : "No folder chosen" };
+      }
+      const path = (a.path ?? input.value ?? "").trim();
+      if (!path) throw new Error("give the folder's full path");
+      const r = await deps.setPipelinesDir(path);
+      return { changed: "pipelines", result: [`Pipelines folder: ${r.pipelines_dir}`, r.note].filter(Boolean).join(". ") };
     }
     case "pipeline": {
       const r = await deps.assistantApply(a.path, a.yaml, a.files ?? {});
@@ -533,6 +597,7 @@ export async function applyAction(a: AssistantAction, deps: ApplyDeps, input: { 
       return {};
     case "incident":
       if (a.op === "clear") await deps.clearIncidents();
+      else if (a.op === "seen") await deps.incidentSeen(a.id ?? "");
       else await deps.deleteIncident(a.id ?? "");
       return {};
     case "budget":
@@ -598,6 +663,18 @@ export async function applyAction(a: AssistantAction, deps: ApplyDeps, input: { 
       );
       const r = await (deps.setTelemetry ?? feedbackApi.setTelemetry)(body);
       return { changed: "settings", result: r.enabled ? `Telemetry on: ${r.endpoint}` : "Telemetry off" };
+    }
+    case "person": {
+      if (a.op === "add" || a.op === "token") {
+        const r = a.op === "add" ? await deps.addPerson(a.name, a.admin === true) : await deps.reissuePerson(a.name);
+        return { result: `Token for ${r.person.name} shown once (Settings > People)`, issuedToken: { name: r.person.name, token: r.token } };
+      }
+      if (a.op === "admin") {
+        await deps.setPersonAdmin(a.name, a.admin === true);
+        return { result: `${a.name} is ${a.admin ? "an admin" : "not an admin"}` };
+      }
+      await deps.revokePerson(a.name);
+      return { result: `${a.name} revoked; their token no longer works` };
     }
   }
 }

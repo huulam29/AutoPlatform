@@ -1,9 +1,10 @@
 // Thin fetch wrapper. The bearer token (when the server has AGENTLINE_API_TOKEN set) is kept in
-// localStorage and asked for on the first 401.
+// localStorage; a 401 forgets it and fires AUTH_NEEDED_EVENT, and App shows the sign-in screen.
 
 import type { ChatMessage, ChatReply } from "./lib/assistant";
 import type { ConversationSummary } from "./lib/conversations";
 import type { GithubLogin, GithubSetup, GithubTest } from "./lib/github";
+import type { Identity, Person } from "./lib/people";
 import type { GithubStatus, TriageRecord } from "./lib/triage";
 import type { Adoption, Lesson, LessonStatus, Probe, ReviewConfig, ReviewRecord } from "./lib/review";
 import type {
@@ -29,6 +30,8 @@ import type {
 } from "./types";
 
 const TOKEN_KEY = "agentline.token";
+/** A request was refused for a missing or wrong token: App shows <SignIn>. */
+export const AUTH_NEEDED_EVENT = "agentline:auth-needed";
 
 export class ApiError extends Error {
   constructor(
@@ -50,10 +53,42 @@ function token(): string | null {
 
 export function setToken(value: string): void {
   try {
-    localStorage.setItem(TOKEN_KEY, value);
+    localStorage.setItem(TOKEN_KEY, value.trim());
   } catch {
     /* private mode: the token lasts for this request only */
   }
+}
+
+export function clearToken(): void {
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    /* nothing stored */
+  }
+}
+
+export const hasToken = (): boolean => !!token();
+
+function authNeeded(): void {
+  clearToken();
+  window.dispatchEvent(new Event(AUTH_NEEDED_EVENT));
+}
+
+/** Ask the engine whether `candidate` is right (or no token is needed); store it only then. */
+export interface AuthCheck {
+  token_required: boolean;
+  ok: boolean;
+  /** who this token is (spec 007): a person, the shared token, or the local user */
+  identity?: Identity | null;
+}
+
+export async function checkToken(candidate?: string): Promise<AuthCheck> {
+  const t = candidate === undefined ? token() : candidate.trim();
+  const res = await fetch("/api/auth/check", { headers: t ? { Authorization: `Bearer ${t}` } : {} });
+  if (!res.ok) throw new ApiError(res.status, res.statusText, null);
+  const r = (await res.json()) as AuthCheck;
+  if (r.ok && candidate !== undefined && r.token_required) setToken(candidate);
+  return r;
 }
 
 /** A pipeline file name ("folder/pipeline") as URL path segments. */
@@ -70,7 +105,7 @@ async function call<T>(
   method: string,
   path: string,
   body?: unknown,
-  retry = true,
+  _retry = true,
   signal?: AbortSignal,
 ): Promise<T> {
   const headers: Record<string, string> = {};
@@ -83,13 +118,7 @@ async function call<T>(
     body: body === undefined ? undefined : JSON.stringify(body),
     signal,
   });
-  if (res.status === 401 && retry) {
-    const entered = window.prompt("API token (AGENTLINE_API_TOKEN):");
-    if (entered) {
-      setToken(entered);
-      return call<T>(method, path, body, false, signal);
-    }
-  }
+  if (res.status === 401) authNeeded();
   const text = await res.text();
   const data = text ? (JSON.parse(text) as unknown) : null;
   if (!res.ok) {
@@ -106,6 +135,7 @@ async function raw(method: string, path: string, body?: Blob): Promise<Response>
   if (t) headers["Authorization"] = `Bearer ${t}`;
   if (body) headers["Content-Type"] = "application/zip";
   const res = await fetch(`/api${path}`, { method, headers, body });
+  if (res.status === 401) authNeeded();
   if (!res.ok) {
     const text = await res.text();
     let detail = res.statusText;
@@ -133,8 +163,10 @@ export interface ChatPlatform {
   token_env: string;
   token_set: boolean;
   bot: string | null;
-  linked: { chat_id: string | number; user_id?: string | number; username?: string; linked_at?: number } | null;
-  pairing: { code: string; expires: number } | null;
+  linked: { chat_id: string | number; user_id?: string | number; username?: string; linked_at?: number; person?: string } | null;
+  /** Who the link's approvals and retries are audited as: a person, or `<platform>:@<user>` (spec 011). */
+  acts_as?: string | null;
+  pairing: { code: string; expires: number; person?: string } | null;
   setup: string;
 }
 
@@ -174,6 +206,7 @@ export interface Approval {
   prompt: string;
   approvers: string[];
   waiting_since: number | null;
+  payload?: unknown;
 }
 
 export interface IncidentSummary {
@@ -431,6 +464,15 @@ export const api = {
   /** agentline's own problems (crash reports, infrastructure verdicts): not on Problems. */
   appReports: () => call<{ reports: TriageRecord[]; github: GithubStatus }>("GET", "/app-reports"),
   deleteAppReport: (id: string) => call<{ deleted: string }>("DELETE", `/app-reports/${encodeURIComponent(id)}`),
+  // People with their own API token (api/people.py, spec 007); a token only when issued
+  people: () => call<{ people: Person[]; me: Identity }>("GET", "/people"),
+  addPerson: (name: string, admin: boolean) =>
+    call<{ person: Person; token: string }>("POST", "/people", { name, admin }),
+  reissuePerson: (name: string) =>
+    call<{ person: Person; token: string }>("POST", `/people/${encodeURIComponent(name)}/token`),
+  setPersonAdmin: (name: string, admin: boolean) =>
+    call<{ person: Person }>("PUT", `/people/${encodeURIComponent(name)}/admin`, { admin }),
+  revokePerson: (name: string) => call<{ revoked: string }>("DELETE", `/people/${encodeURIComponent(name)}`),
   // GitHub for reports (api/github.py): never returns a token
   github: () => call<GithubSetup>("GET", "/github"),
   githubSave: (body: { repo?: string; auto?: boolean }) => call<GithubSetup>("PUT", "/github", body),
@@ -489,6 +531,22 @@ export const api = {
       "GET",
       "/status",
     ),
+  // What the Mac app's native bridge answers, for a browser (api/app.py)
+  appInfo: () => call<AppInfoApi>("GET", "/app/info"),
+  restartEngine: () => call<{ restarting: boolean }>("POST", "/engine/restart"),
+  folders: (path = "") =>
+    call<FolderListing>("GET", `/app/folders${path ? `?path=${encodeURIComponent(path)}` : ""}`),
+  setPipelinesDir: (path: string) =>
+    call<{ pipelines_dir: string; seeded: boolean; note: string | null }>("PUT", "/app/pipelines-dir", { path }),
+  /** Show in the system file manager (only on the engine's own machine). */
+  reveal: (where: { path?: string; target?: "data" | "pipelines" | "config" | "incidents" }) =>
+    call<{ revealed: string }>("POST", "/app/reveal", where),
+  /** Every report as one .zip (the Mac app's Export report layout). */
+  exportReports: async (): Promise<{ blob: Blob; filename: string }> => {
+    const res = await raw("GET", "/incidents/export");
+    const m = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "");
+    return { blob: await res.blob(), filename: m?.[1] ?? "agentline-report.zip" };
+  },
   incidents: () => call<{ incidents: IncidentSummary[]; dir: string; new: number }>("GET", "/incidents"),
   incident: (id: string) => call<Incident>("GET", `/incidents/${encodeURIComponent(id)}`),
   incidentSeen: (id: string) => call<unknown>("POST", `/incidents/${encodeURIComponent(id)}/seen`),
@@ -527,6 +585,28 @@ export const api = {
   updateSkills: (names?: string[]) =>
     call<{ result: { updated: string[]; missing: string[] } }>("POST", "/skills/update", { names }),
 };
+
+export interface AppInfoApi {
+  version: string;
+  data_folder: string;
+  config_path: string;
+  pipelines_dir: string;
+  pipelines_dir_from_cli: boolean;
+  address: string | null;
+  mac_app: boolean;
+  /** this browser is on the engine's own machine (not through a proxy) */
+  local: boolean;
+  token_required: boolean;
+  can_restart: boolean;
+  can_reveal: boolean;
+}
+
+export interface FolderListing {
+  path: string;
+  parent: string | null;
+  home: string;
+  folders: { name: string; path: string; readable: boolean }[];
+}
 
 export interface VisionStatus {
   choice: string;

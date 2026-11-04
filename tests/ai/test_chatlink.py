@@ -349,6 +349,7 @@ def test_gatekeeper_talks_in_the_chat(tmp_path: Path, monkeypatch: pytest.Monkey
     with app.ledger.tx() as tx:
         audit = [a for a in tx.list_audit(run.id) if a.action == "retry"]
     assert audit[0].detail["via"] == "telegram:@user42"
+    assert audit[0].actor == "telegram:@user42"  # the card's tap, not the OS user (spec 011)
 
 
 def test_rate_a_run_from_the_chat(world: Any) -> None:
@@ -376,3 +377,124 @@ def test_rate_a_run_from_the_chat(world: Any) -> None:
     assert rows[-1]["comment"] == "the disk was full again"
     assert rows[0]["by"] == f"telegram:@user{state.linked()['user_id']}"
     assert sub.run_id in feedback.read_pending()  # the review loop will look at it
+
+
+# -- who chat-link actions are recorded as (spec 011) ------------------------------------------
+
+
+def _gated(link: ChatLink, app: App, tmp_path: Path, name: str, approvers: str = "") -> None:
+    extra = f", approvers: [{approvers}]" if approvers else ""
+    src = (f"version: 1\nname: {name}\nnodes:\n"
+           f"  ok: {{ type: gate, prompt: \"Go?\"{extra} }}\n")  # fmt: skip
+    app.register_pipeline(build_pipeline(parse_spec(src, base_dir=tmp_path), link.registry))
+
+
+def _actors(app: App, run_id: str, action: str) -> list[str]:
+    with app.ledger.tx() as tx:
+        return [a.actor for a in tx.list_audit(run_id) if a.action == action]
+
+
+def _decide(link: ChatLink, tg: FakeTelegram, app: App, name: str, verb: str = "approve") -> str:
+    run_id = app.submit_sync(name, {}).run_id
+    drain(app)
+    tg.text(f"/{verb} {run_id}")
+    step(link)
+    return run_id
+
+
+def test_chat_actions_name_the_chat_user_not_the_os_user(
+    world: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    link, tg, app = world
+    monkeypatch.setenv("AGENTLINE_USER", "osuser")
+    _gated(link, app, tmp_path, "g")
+    pair(link, tg)  # a code made by the local user: no person
+    assert "person" not in state.linked()
+    a = _decide(link, tg, app, "g")
+    assert _actors(app, a, "approve") == ["telegram:@user42"]
+    r = _decide(link, tg, app, "g", "reject")
+    assert _actors(app, r, "reject") == ["telegram:@user42"]
+    broken = app.submit_sync("broken", {}).run_id
+    drain(app)
+    tg.text(f"/retry {broken}")
+    step(link)
+    assert _actors(app, broken, "retry") == ["telegram:@user42"]
+
+
+def test_a_persons_pairing_code_links_a_chat_that_acts_as_them(
+    world: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from agentline.people import PeopleStore
+
+    link, tg, app = world
+    monkeypatch.setenv("AGENTLINE_USER", "osuser")
+    PeopleStore().add("alice")
+    _gated(link, app, tmp_path, "g")
+    tg.text(f"/start {state.new_pair_code('alice')}")
+    step(link)
+    assert state.linked()["person"] == "alice"
+    a = _decide(link, tg, app, "g")
+    assert _actors(app, a, "approve") == ["alice"]
+    with app.ledger.tx() as tx:
+        row = next(x for x in tx.list_audit(a) if x.action == "approve")
+    assert row.detail["via"] == "telegram:@user42"  # still says which chat it came through
+    PeopleStore().revoke("alice")  # removed later: the chat user, not the removed name
+    b = _decide(link, tg, app, "g")
+    assert _actors(app, b, "approve") == ["telegram:@user42"]
+
+
+def test_an_old_link_without_a_username_acts_as_the_user_id(
+    world: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    link, tg, app = world
+    monkeypatch.setenv("AGENTLINE_USER", "osuser")
+    _gated(link, app, tmp_path, "g")
+    with state.edit() as d:  # paired before spec 011: no person, and here no username either
+        d["telegram"] = {"chat_id": OWNER, "user_id": OWNER, "username": "", "linked_at": 1.0}
+    a = _decide(link, tg, app, "g")
+    assert _actors(app, a, "approve") == [f"telegram:@{OWNER}"]
+
+
+def test_gate_approvers_are_checked_against_the_chat_actor(
+    world: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from agentline.people import PeopleStore
+
+    link, tg, app = world
+    monkeypatch.setenv("AGENTLINE_USER", "osuser")
+    PeopleStore().add("alice")
+    _gated(link, app, tmp_path, "for_alice", "alice")
+    _gated(link, app, tmp_path, "for_os", "osuser")
+    tg.text(f"/start {state.new_pair_code('alice')}")
+    step(link)
+    a = _decide(link, tg, app, "for_alice")
+    assert app.get_run(a).status == "done"
+    with state.edit() as d:  # the same chat, linked by nobody in particular
+        d["telegram"].pop("person")
+    before = len(tg.sent)
+    b = _decide(link, tg, app, "for_os")
+    assert any("not an approver" in m["text"] for m in tg.sent[before:])
+    assert app.get_run(b).status == "waiting" and _actors(app, b, "approve") == []
+
+
+def test_chat_api_pair_records_the_person_and_shows_acts_as(
+    world: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from agentline.people import PeopleStore
+
+    link, tg, app = world
+    monkeypatch.setenv("AGENTLINE_USER", "osuser")
+    monkeypatch.delenv("AGENTLINE_API_TOKEN", raising=False)
+    _, token = PeopleStore().add("alice")
+    (tmp_path / "p3").mkdir()
+    c = TestClient(create_server(app, [], pipelines_dir=tmp_path / "p3"))
+    c.post("/api/chat/telegram/pair")  # the local user: no person
+    assert "person" not in state.read()["pair"]
+    r = c.post("/api/chat/telegram/pair", headers={"Authorization": f"Bearer {token}"}).json()
+    assert state.read()["pair"]["person"] == "alice"
+    assert c.get("/api/chat").json()["telegram"]["acts_as"] is None
+    tg.text(f"/start {r['code']}")
+    step(link)
+    assert c.get("/api/chat").json()["telegram"]["acts_as"] == "alice"
+    PeopleStore().revoke("alice")
+    assert c.get("/api/chat").json()["telegram"]["acts_as"] == "telegram:@user42"

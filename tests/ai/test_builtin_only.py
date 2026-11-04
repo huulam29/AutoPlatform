@@ -14,6 +14,7 @@ from agentline import agents as ai
 from agentline.config import Config
 from agentline.errors import ValidationError
 from agentline.harness_migration import marker_path, migrate
+from tests.fakebin import fake_bin
 
 pytestmark = pytest.mark.builtin_only
 
@@ -95,8 +96,7 @@ def test_setup_offers_an_installed_cli_and_adds_it_when_used(
 
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    (bin_dir / "claude").write_text("#!/bin/sh\n")
-    (bin_dir / "claude").chmod(0o755)
+    fake_bin(bin_dir, "claude")
     monkeypatch.setenv("PATH", str(bin_dir))
     toml = tmp_path / "agentline.toml"
     monkeypatch.setenv("AGENTLINE_CONFIG", str(toml))

@@ -1,0 +1,44 @@
+name: Slow (chaos + e2e)
+
+# The multi-minute chaos and acceptance runs: nightly, on merges to main, on demand,
+# and on pull requests that change this workflow.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - .github/workflows/slow.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: slow-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AGENTLINE_TRIAGE: "off"
+  AGENTLINE_REVIEW: "off"
+  AGENTLINE_ADVISOR: "off"
+
+jobs:
+  slow:
+    name: Slow tests, chaos and e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.11"
+          enable-cache: true
+      - run: uv sync --extra server
+      - name: pytest (slow)
+        run: uv run pytest -m slow
+      - name: chaos (pipeline)
+        run: uv run python -m demo.chaos --target pipeline --jobs 50 --expect-clean
+      - name: e2e acceptance
+        run: uv run python -m demo.e2e.run --tickets 10 --seed 1 --expect-clean

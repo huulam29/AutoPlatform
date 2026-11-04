@@ -262,10 +262,11 @@ def test_lesson_library_round_trip(tmp_path: Path) -> None:
     assert lessons.add(f, "p", dict(a)).id == 1  # the same lesson isn't added twice
     two = lessons.add(f, "p", {**a, "lesson": "do z", "adopted": True})
     assert two.id == 2 and two.status == "adopted"
-    text = lessons.path_for(f).read_text()
+    text = lessons.path_for(f).read_text(encoding="utf-8")
     assert text.startswith("# Lessons: p") and "### L2 · write · prompt" in text
     # a hand-written note survives a status change
-    lessons.path_for(f).write_text(text.replace("- status: adopted", "- status: adopted\nmy note"))
+    note = text.replace("- status: adopted", "- status: adopted\nmy note")
+    lessons.path_for(f).write_text(note, encoding="utf-8")
     lessons.set_status(f, "p", 2, "helped", "trouble 1.0 -> 0.0")
     got = {x.id: x for x in lessons.read(f)}
     assert got[2].status == "helped" and "my note" in got[2].notes
@@ -392,7 +393,8 @@ def test_probe_coding_node_in_a_clone_without_remote(tmp_path: Path) -> None:
         "write: { type: agent, prompt: prompts/write.md, out: draft,"
         " workspace: { type: local, repo: app } }",
     )
-    w = World(tmp_path, f'[repos.app]\nremote = "{remote}"\n', spec=spec)
+    remote_url = Path(remote).as_posix()  # a Windows path's backslashes are TOML escapes
+    w = World(tmp_path, f'[repos.app]\nremote = "{remote_url}"\n', spec=spec)
     run_id = w.run(loops=1)
     run = w.app.get_run(run_id)
     assert run is not None and run.status == "done"

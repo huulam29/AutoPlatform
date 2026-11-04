@@ -45,6 +45,12 @@ function fakeDeps(): { deps: ApplyDeps; calls: string[] } {
     chatUnlink: rec("chatUnlink", {}),
     chatNotify: rec("chatNotify", {}),
     native: rec("native", { path: "/p" }),
+    macApp: () => true, // the engine rows below are the Mac app's; browser cases set false
+    restartEngine: rec("restartEngine", {}),
+    setPipelinesDir: rec("setPipelinesDir", { pipelines_dir: "/srv/p", note: null, seeded: false }),
+    reveal: rec("reveal", {}),
+    exportReports: rec("exportReports", {}),
+    incidentSeen: rec("incidentSeen", {}),
     assistantApply: rec("assistantApply", { name: "dev/pipeline" }),
     exportPipeline: rec("exportPipeline", { filename: "dev.agentline.zip" }),
     importPipeline: rec("importPipeline", { name: "imported/pipeline", issues: [], applied: ["models.x"] }),
@@ -75,6 +81,10 @@ function fakeDeps(): { deps: ApplyDeps; calls: string[] } {
     setTelemetry: rec("setTelemetry", { enabled: true, endpoint: "http://c:4318" } as never),
     testTelemetry: rec("testTelemetry", { ok: true }),
     openReport: (...args: unknown[]) => void calls.push(["openReport", ...args].join(" ")),
+    addPerson: rec("addPerson", { person: { name: "bob", admin: false, created_at: 1 }, token: "alp_secret" }),
+    reissuePerson: rec("reissuePerson", { person: { name: "bob", admin: false, created_at: 1 }, token: "alp_new" }),
+    setPersonAdmin: rec("setPersonAdmin", {}),
+    revokePerson: rec("revokePerson", {}),
   };
   return { deps, calls };
 }
@@ -139,6 +149,10 @@ const CASES: [Record<string, unknown>, string, Record<string, unknown>?][] = [
   [{ type: "run_report", run: "r1", format: "json" }, "openReport r1 json"],
   [{ type: "telemetry", enabled: true, endpoint: "http://c:4318" }, 'setTelemetry {"enabled":true,"endpoint":"http://c:4318"}', { changed: "settings", result: "Telemetry on: http://c:4318" }],
   [{ type: "telemetry", op: "test" }, "testTelemetry", { result: "The collector answered" }],
+  [{ type: "person", op: "add", name: "bob", admin: true }, "addPerson bob true", { issuedToken: { name: "bob", token: "alp_secret" } }],
+  [{ type: "person", op: "token", name: "bob" }, "reissuePerson bob", { issuedToken: { name: "bob", token: "alp_new" } }],
+  [{ type: "person", op: "admin", name: "bob", admin: false }, "setPersonAdmin bob false", { result: "bob is not an admin" }],
+  [{ type: "person", op: "revoke", name: "bob" }, "revokePerson bob", { result: "bob revoked; their token no longer works" }],
   [
     { type: "pipeline_lesson", pipeline: "dev/pipeline", node: "write", cue: "when x", lesson: "do y", confidence: "high", why: "w" },
     'lessonAdd dev/pipeline {"node":"write","cue":"when x","lesson":"do y","confidence":"high"}',
@@ -156,6 +170,13 @@ describe("Chat parity: applying each action", () => {
       expect(actionTitle(act(a))).toBeTruthy();
     });
   }
+
+  it("a person's new token is kept out of the card's result (shown once in a popup)", async () => {
+    const { deps } = fakeDeps();
+    const r = await applyAction(act({ type: "person", op: "add", name: "bob" }), deps);
+    expect(r.result).not.toContain("alp_secret");
+    expect(needsOwnClick(act({ type: "person", op: "revoke", name: "bob" }))).toBe(true);
+  });
 
   it("a key's value goes to /api/secrets only, and is required", async () => {
     const { deps, calls } = fakeDeps();
@@ -239,5 +260,39 @@ describe("Chat instructions", () => {
   it("the card shows the new text", () => {
     expect(actionDetails(act({ type: "chat_instructions", text: "- a\n- b\n" }))).toEqual(["- a", "- b"]);
     expect(actionTitle(act({ type: "chat_instructions", text: "x" }))).toBe("Change the Chat instructions");
+  });
+});
+
+describe("Chat engine actions in a browser (spec 006)", () => {
+  const browser = () => {
+    const f = fakeDeps();
+    f.deps.macApp = () => false;
+    return f;
+  };
+  it("restart, reveal and export go through the engine API, not the bridge", async () => {
+    const { deps, calls } = browser();
+    await applyAction(act({ type: "engine", op: "restart" }), deps);
+    await applyAction(act({ type: "engine", op: "reveal", target: "pipelines" }), deps);
+    await applyAction(act({ type: "engine", op: "export_reports" }), deps);
+    expect(calls).toEqual(["restartEngine", 'reveal {"target":"pipelines"}', "exportReports"]);
+  });
+  it("choose_folder takes the action's path or the card's input", async () => {
+    const { deps, calls } = browser();
+    const r = await applyAction(act({ type: "engine", op: "choose_folder", path: "/srv/p" }), deps);
+    expect(r.result).toContain("/srv/p");
+    await applyAction(act({ type: "engine", op: "choose_folder" }), deps, { value: " /typed " });
+    expect(calls).toEqual(["setPipelinesDir /srv/p", "setPipelinesDir /typed"]);
+    await expect(applyAction(act({ type: "engine", op: "choose_folder" }), deps)).rejects.toThrow("full path");
+  });
+  it("the Mac app keeps the native calls", async () => {
+    const { deps, calls } = fakeDeps();
+    await applyAction(act({ type: "engine", op: "export_reports" }), deps);
+    await applyAction(act({ type: "engine", op: "reveal", target: "data" }), deps);
+    expect(calls).toEqual(["native problems.export", "native finder.dataFolder"]);
+  });
+  it("incident seen marks the report seen", async () => {
+    const { deps, calls } = fakeDeps();
+    await applyAction(act({ type: "incident", op: "seen", id: "abc" }), deps);
+    expect(calls).toEqual(["incidentSeen abc"]);
   });
 });

@@ -7,6 +7,12 @@ import { ADD_HARNESS, BUILTIN_HARNESS, chatModelOptions, modelAfterHarnessChange
 import { AddHarnessDialog, AddHarnessOption } from "./AddHarness";
 import { OPEN_SETUP_EVENT } from "../lib/setup";
 import { isMacApp, nativeCall, type AppInfo } from "../lib/native";
+import { AUTH_NEEDED_EVENT, type AppInfoApi, checkToken, clearToken, hasToken } from "../api";
+import { identityLabel, type Identity } from "../lib/people";
+import { CopyPath } from "./CopyPath";
+import { FolderPicker } from "./FolderPicker";
+import { restartEngine } from "../lib/engine";
+import { NotificationsSetting } from "./NotificationsSetting";
 import { NewRow, RowItem, Rows, SettingsPage } from "./SettingsRows";
 import type { HarnessPreset } from "../types";
 import { GitHubSetup } from "./GitHubSetup";
@@ -187,6 +193,12 @@ function PlatformCard({
           <p>
             Bot <strong>{p.bot ? `@${p.bot}` : "?"}</strong> is linked to{" "}
             <strong>{p.linked.username ? `@${p.linked.username}` : `chat ${p.linked.chat_id}`}</strong>.
+            {p.acts_as ? (
+              <>
+                {" "}
+                Approvals and retries from it are recorded as <strong>{p.acts_as}</strong>.
+              </>
+            ) : null}
           </p>
           <div className="row">
             <button type="button" disabled={busy} onClick={() => void run(() => api.chatTest(name))}>
@@ -746,15 +758,18 @@ export function ChatInstructionsEditor() {
   );
 }
 
-/** Engine, folders and Jira polling. Folder choice and restart need the Mac app. */
+/** Engine, folders and Jira polling. In the Mac app the folder, restart and Finder buttons go
+ * through the native bridge; in a browser through the engine API (spec 006 US3). */
 export function GeneralSection({ children }: { children?: ReactNode }) {
   const [info, setInfo] = useState<AppInfo | null>(null);
+  const [web, setWeb] = useState<AppInfoApi | null>(null);
   const [status, setStatus] = useState<{ version: string; pipelines: string[]; jira_poll?: Record<string, unknown> } | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const load = async () => {
     try {
       setStatus(await api.status());
       if (isMacApp()) setInfo(await nativeCall<AppInfo>("app.info"));
+      else setWeb(await api.appInfo());
     } catch (e) {
       setMsg(errText(e));
     }
@@ -788,12 +803,27 @@ export function GeneralSection({ children }: { children?: ReactNode }) {
             <dd className="mono">{info.configPath}</dd>
           </>
         )}
+        {web && (
+          <>
+            <dt>Address</dt>
+            <dd className="mono">{web.address ?? window.location.origin}</dd>
+            <dt>Data folder</dt>
+            <dd>
+              <CopyPath path={web.data_folder} canReveal={web.can_reveal} target="data" />
+            </dd>
+            <dt>Config</dt>
+            <dd>
+              <CopyPath path={web.config_path} canReveal={web.can_reveal} target="config" />
+            </dd>
+          </>
+        )}
         <dt>Pipelines loaded</dt>
         <dd>{status?.pipelines.join(", ") || "none"}</dd>
       </dl>
       <p className="small">
         <a href="#/app-reports">App reports</a>: crash reports and other problems in agentline itself, ready to report on GitHub.
       </p>
+      {web && <BrowserEngine info={web} onChanged={load} />}
       <GitHubSetup />
       <TelemetrySetting />
       {info?.dev && <p className="small warn">Development mode: AGENTLINE_DEV_PYTHON is set.</p>}
@@ -844,5 +874,89 @@ export function GeneralSection({ children }: { children?: ReactNode }) {
       {msg && <p className="small muted">{msg}</p>}
       {children}
     </div>
+  );
+}
+
+/** Settings > General in a browser: restart, the pipelines folder, notifications, sign out. */
+function BrowserEngine({ info, onChanged }: { info: AppInfoApi; onChanged: () => Promise<void> }) {
+  const [path, setPath] = useState(info.pipelines_dir);
+  const [picking, setPicking] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [who, setWho] = useState<Identity | null>(null);
+  useEffect(() => setPath(info.pipelines_dir), [info.pipelines_dir]);
+  useEffect(() => {
+    if (hasToken()) void checkToken().then((r) => setWho(r.identity ?? null), () => setWho(null));
+  }, []);
+  const save = async (p: string) => {
+    try {
+      const r = await api.setPipelinesDir(p);
+      setMsg([r.seeded ? "Saved; the empty folder got the ticket-to-eod template." : "Saved.", r.note].filter(Boolean).join(" "));
+      await onChanged();
+    } catch (e) {
+      setMsg(errText(e));
+    }
+  };
+  return (
+    <>
+      {info.can_restart && (
+        <div className="row">
+          <button
+            type="button"
+            onClick={() => restartEngine().catch((e: unknown) => setMsg(errText(e)))}
+          >
+            Restart engine
+          </button>
+        </div>
+      )}
+      <h3>Pipelines folder</h3>
+      <CopyPath path={info.pipelines_dir} canReveal={info.can_reveal} target="pipelines" />
+      <form
+        className="row"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save(path);
+        }}
+      >
+        <input className="mono grow" aria-label="pipelines folder" value={path} onChange={(e) => setPath(e.target.value)} />
+        <button type="button" onClick={() => setPicking(true)}>
+          Browse…
+        </button>
+        <button type="submit" disabled={path.trim() === info.pipelines_dir}>
+          Use this folder
+        </button>
+      </form>
+      <p className="small muted">A folder on the engine's machine. An empty folder gets the ticket-to-eod template. No restart needed.</p>
+      {msg && <p className="small muted">{msg}</p>}
+      {picking && (
+        <FolderPicker
+          start={path}
+          title="Choose the pipelines folder"
+          onCancel={() => setPicking(false)}
+          onChoose={(p) => {
+            setPicking(false);
+            setPath(p);
+            void save(p);
+          }}
+        />
+      )}
+      <NotificationsSetting />
+      {hasToken() && (
+        <>
+          <h3>Sign-in</h3>
+          <p className="small">
+            This browser is signed in{who ? ` as ${identityLabel(who)}` : " with an API token"}.{" "}
+            <button
+              type="button"
+              onClick={() => {
+                clearToken();
+                window.dispatchEvent(new Event(AUTH_NEEDED_EVENT));
+              }}
+            >
+              Sign out
+            </button>
+          </p>
+        </>
+      )}
+    </>
   );
 }

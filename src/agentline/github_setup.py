@@ -51,7 +51,12 @@ def _gh(*args: str, timeout: float = 10.0) -> tuple[int, str, str]:
         return 127, "", "gh isn't installed"
     try:
         p = subprocess.run(
-            [gh, *args], capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL
+            [gh, *args],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=timeout,
+            stdin=subprocess.DEVNULL,
         )
     except (OSError, subprocess.TimeoutExpired) as e:
         return 1, "", str(e)
@@ -120,7 +125,7 @@ class Login:
                 [gh, "auth", "login", "--hostname", HOST, "--git-protocol", "https", "--web",
                  "--skip-ssh-key"],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, env=env,
+                text=True, encoding="utf-8", env=env,
             )  # fmt: skip
             proc = self.proc
         with contextlib.suppress(OSError):
@@ -189,7 +194,8 @@ def detect_repos(dirs: list[tuple[str, Path]]) -> list[dict[str, Any]]:
         try:
             p = subprocess.run(
                 ["git", "-C", str(d), "remote", "-v"],
-                capture_output=True, text=True, timeout=5, stdin=subprocess.DEVNULL,
+                capture_output=True, text=True, encoding="utf-8", timeout=5,
+                stdin=subprocess.DEVNULL,
             )  # fmt: skip
         except (OSError, subprocess.TimeoutExpired):
             continue
@@ -243,7 +249,7 @@ def save(path: Path, repo: str | None, auto: bool | None = None) -> None:
             split_repo(repo)
         except ValueError as e:
             raise ValidationError(str(e)) from None
-    text = path.read_text() if path.exists() else ""
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
     current = dict(tomllib.loads(text).get("report") or {}) if text.strip() else {}
     current["github_repo"] = repo or None
     if auto is not None:

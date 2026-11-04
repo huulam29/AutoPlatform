@@ -119,7 +119,7 @@ def render(title: str, head: list[str], items: list[Lesson]) -> str:
 def read(pipeline_file: Path) -> list[Lesson]:
     p = path_for(pipeline_file)
     try:
-        return parse(p.read_text())[1]
+        return parse(p.read_text(encoding="utf-8"))[1]
     except OSError:
         return []
 
@@ -128,7 +128,7 @@ def text_for_prompt(pipeline_file: Path, limit: int = 8000) -> str:
     """The library as the reviewer and the Chat read it ('' when there is none)."""
     p = path_for(pipeline_file)
     try:
-        return p.read_text()[:limit]
+        return p.read_text(encoding="utf-8")[:limit]
     except OSError:
         return ""
 
@@ -170,7 +170,7 @@ def add(pipeline_file: Path, title: str, a: dict[str, Any]) -> Lesson:
     if issues:
         raise ValidationError("; ".join(issues))
     p = path_for(pipeline_file)
-    head, items = parse(p.read_text()) if p.exists() else ([], [])
+    head, items = parse(p.read_text(encoding="utf-8")) if p.exists() else ([], [])
     for x in items:
         if (x.node, x.cue, x.lesson) == (str(a["node"]), a["cue"], a["lesson"]):
             return x
@@ -198,7 +198,7 @@ def set_status(
     if status not in STATUSES:
         raise ValidationError(f"status must be one of {', '.join(STATUSES)}")
     p = path_for(pipeline_file)
-    head, items = parse(p.read_text()) if p.exists() else ([], [])
+    head, items = parse(p.read_text(encoding="utf-8")) if p.exists() else ([], [])
     hit = next((x for x in items if x.id == lesson_id), None)
     if hit is None:
         raise KeyError(lesson_id)

@@ -359,7 +359,7 @@ def create_settings_router(files: Any) -> APIRouter:
         try:
             SECTIONS[section](name, table)  # same checks as loading the file
             path = config_path(files.config)
-            text = path.read_text() if path.exists() else ""
+            text = path.read_text(encoding="utf-8") if path.exists() else ""
             new = set_table(text, section, name, table)
             removed = config().removed_providers
             if section == "providers" and name in removed:  # added back (a preset)
@@ -389,7 +389,7 @@ def create_settings_router(files: Any) -> APIRouter:
         except KeyError:
             raise HTTPException(404, f"unknown model {name!r}") from None
         path = config_path(files.config)
-        text = path.read_text() if path.exists() else ""
+        text = path.read_text(encoding="utf-8") if path.exists() else ""
         try:
             new = (
                 delete_table(text, "models", name)
@@ -437,7 +437,7 @@ def create_settings_router(files: Any) -> APIRouter:
         if not path.exists():
             raise HTTPException(404, f"{path} doesn't exist")
         try:
-            new = delete_table(path.read_text(), section, name)
+            new = delete_table(path.read_text(encoding="utf-8"), section, name)
             for model in users:
                 new = delete_table(new, "models", model)
             Config.from_dict(tomllib.loads(new), path)
@@ -472,7 +472,7 @@ def create_settings_router(files: Any) -> APIRouter:
                 409, f"{name!r} has harness defaults: {', '.join(defaults)}; change those first"
             )
         path = config_path(files.config)
-        text = path.read_text() if path.exists() else ""
+        text = path.read_text(encoding="utf-8") if path.exists() else ""
         try:
             new = delete_table(text, "providers", name)
             for model in users:
@@ -589,7 +589,7 @@ def create_settings_router(files: Any) -> APIRouter:
         have = {m.model: m.name for m in every.values() if m.provider == name}
         defaults = {a.model for a in cfg.harnesses.values() if a.model}
         path = config_path(files.config)
-        text = path.read_text() if path.exists() else ""
+        text = path.read_text(encoding="utf-8") if path.exists() else ""
         taken = set(every)
         added, removed, kept = [], [], []
         for model_id in wanted:
@@ -661,7 +661,7 @@ def create_settings_router(files: Any) -> APIRouter:
         try:
             picked = mcp_detect.import_found(detected(), body.items, cfg.mcp)
             path = config_path(files.config)
-            text = path.read_text() if path.exists() else ""
+            text = path.read_text(encoding="utf-8") if path.exists() else ""
             for name, table, _ in picked:
                 text = set_table(text, "mcp", name, table)
             Config.from_dict(tomllib.loads(text), path)

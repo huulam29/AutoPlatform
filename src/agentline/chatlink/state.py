@@ -1,7 +1,8 @@
 """The chat link's local state: `$AGENTLINE_HOME/chatlink.json` (0600).
 
-{"telegram": {"chat_id", "user_id", "username", "linked_at"} | null,
- "pair": {"code", "expires"},            a pending pairing code (10 minutes)
+{"telegram": {"chat_id", "user_id", "username", "linked_at", "person"?} | null,
+ "pair": {"code", "expires", "person"?}, a pending pairing code (10 minutes); `person` is
+                                         who asked for it (spec 011)
  "offset": <next update id>,
  "notify": {"gates", "failures", "done", "questions", "reviews"},
  "sent": {"gate:<exec id>": message_id, "run:<id>:<status>": message_id, ...},
@@ -12,7 +13,6 @@
 from __future__ import annotations
 
 import contextlib
-import fcntl
 import json
 import os
 import secrets
@@ -20,6 +20,8 @@ import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
+
+from agentline.filelock import locked_file
 
 DEFAULT_NOTIFY = {
     "gates": True,
@@ -69,7 +71,7 @@ class ChatState:
 
     def read(self) -> dict[str, Any]:
         try:
-            data = json.loads(self.path.read_text())
+            data = json.loads(self.path.read_text(encoding="utf-8"))
             return data if isinstance(data, dict) else {}
         except (OSError, ValueError):
             return {}
@@ -80,7 +82,7 @@ class ChatState:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(f".{path.name}.tmp")
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w") as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
         os.replace(tmp, path)
 
@@ -89,14 +91,10 @@ class ChatState:
         """Read-modify-write under a lock (the API and the loop both write)."""
         path = self.path
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path.with_name(f".{path.stem}.lock"), "a") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
-            try:
-                data = self.read()
-                yield data
-                self._write(data)
-            finally:
-                fcntl.flock(lock, fcntl.LOCK_UN)
+        with locked_file(path.with_name(f".{path.stem}.lock")):
+            data = self.read()
+            yield data
+            self._write(data)
 
     def notify_prefs(self, data: dict[str, Any] | None = None) -> dict[str, bool]:
         """Shared by every platform (kept in chatlink.json)."""
@@ -104,10 +102,15 @@ class ChatState:
             data = ChatState("telegram").read() if self.platform != "telegram" else self.read()
         return {**DEFAULT_NOTIFY, **{k: bool(v) for k, v in (data.get("notify") or {}).items()}}
 
-    def new_pair_code(self) -> str:
+    def new_pair_code(self, person: str | None = None) -> str:
+        """A fresh pairing code. `person`: the named person (spec 007) who asked for it; the link
+        it pairs then acts as them in audit rows (spec 011)."""
         code = f"{secrets.randbelow(10**6):06d}"
+        pair: dict[str, Any] = {"code": code, "expires": time.time() + PAIR_SECONDS}
+        if person:
+            pair["person"] = person
         with self.edit() as d:
-            d["pair"] = {"code": code, "expires": time.time() + PAIR_SECONDS}
+            d["pair"] = pair
         return code
 
     def linked(self) -> dict[str, Any] | None:

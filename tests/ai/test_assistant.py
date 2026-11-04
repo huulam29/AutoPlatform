@@ -16,6 +16,7 @@ from agentline.builtins import default_registry
 from agentline.config import Config
 from agentline.registry import RunRequest, RunResult
 from agentline.runners.function import FunctionRunner
+from tests.fakebin import WINDOWS
 
 GOOD = """\
 version: 1
@@ -142,7 +143,8 @@ def test_invalid_pipeline_gets_one_repair_round_then_applies(setup: Any) -> None
     )
     assert a.status_code == 200 and a.json() == {"name": "dev-cycle/pipeline", "issues": []}
     assert (pipelines / "dev-cycle/prompts/plan.md").read_text().startswith("Plan the change")
-    assert (pipelines / "dev-cycle/scripts/lint.sh").stat().st_mode & 0o111  # executable
+    if not WINDOWS:  # no executable bit there
+        assert (pipelines / "dev-cycle/scripts/lint.sh").stat().st_mode & 0o111
     assert "dev-cycle/pipeline" in [p["name"] for p in c.get("/api/pipelines").json()["pipelines"]]
     for bad in ("../x.yaml", "/etc/x.yaml", "a.txt"):
         assert c.post("/api/assistant/apply", json={"path": bad, "yaml": GOOD}).status_code == 422

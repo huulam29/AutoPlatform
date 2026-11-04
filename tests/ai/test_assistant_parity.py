@@ -78,6 +78,8 @@ LIVE = Live(
         {"id": "c-active1", "title": "Build a pipeline", "updated_at": 0, "archived": False},
         {"id": "c-old0001", "title": "Old chat", "updated_at": 0, "archived": True},
     ],
+    me={"kind": "local", "name": "huu", "admin": True},
+    people=[{"name": "bob", "admin": False}],
 )
 
 # (action, expected issue substring or "" for valid)
@@ -134,6 +136,11 @@ CASES: list[tuple[dict[str, Any], str]] = [
     ({"type": "chat_notify", "gates": "yes"}, "true or false"),
     ({"type": "engine", "op": "restart"}, ""),
     ({"type": "engine", "op": "format-disk"}, "op must"),
+    ({"type": "engine", "op": "choose_folder", "path": "/srv/pipelines"}, ""),
+    ({"type": "engine", "op": "choose_folder", "path": "  "}, "path must"),
+    ({"type": "engine", "op": "reveal", "target": "pipelines"}, ""),
+    ({"type": "engine", "op": "reveal", "target": "/etc"}, "target must"),
+    ({"type": "engine", "op": "export_reports"}, ""),
     ({"type": "export", "pipeline": "dev"}, ""),
     ({"type": "export", "pipeline": "../etc/passwd"}, "bad pipeline name"),
     ({"type": "export", "pipeline": "ghost"}, "no pipeline file"),
@@ -170,6 +177,9 @@ CASES: list[tuple[dict[str, Any], str]] = [
     ({"type": "incident", "op": "delete", "id": "inc-1"}, ""),
     ({"type": "incident", "op": "delete", "id": "inc-9"}, "no crash report"),
     ({"type": "incident", "op": "clear"}, ""),
+    ({"type": "incident", "op": "seen", "id": "inc-1"}, ""),
+    ({"type": "incident", "op": "seen", "id": "inc-9"}, "no crash report"),
+    ({"type": "incident", "op": "burn", "id": "inc-1"}, "op must"),
     ({"type": "budget", "monthly_usd": 50}, ""),
     ({"type": "budget", "monthly_usd": None}, ""),
     ({"type": "budget", "monthly_usd": -5}, "number of dollars"),
@@ -191,6 +201,15 @@ CASES: list[tuple[dict[str, Any], str]] = [
     ({"type": "conversation", "op": "archive", "id": "c-old0001"}, "already archived"),
     ({"type": "conversation", "op": "archive", "id": "c-ghost01"}, "no conversation"),
     ({"type": "conversation", "op": "delete", "id": "c-active1"}, "op must be"),
+    ({"type": "person", "op": "add", "name": "carol", "admin": True}, ""),
+    ({"type": "person", "op": "add", "name": "BOB"}, "already a person"),
+    ({"type": "person", "op": "add", "name": "shared-token"}, "reserved"),
+    ({"type": "person", "op": "add", "name": "a b"}, "no spaces"),
+    ({"type": "person", "op": "token", "name": "bob"}, ""),
+    ({"type": "person", "op": "revoke", "name": "ghost"}, "no person"),
+    ({"type": "person", "op": "admin", "name": "bob", "admin": True}, ""),
+    ({"type": "person", "op": "admin", "name": "bob"}, "true or false"),
+    ({"type": "person", "op": "rename", "name": "bob"}, "op must be"),
     ({"type": "review", "run": "r1"}, ""),
     ({"type": "review", "run": "r 1"}, "bad run id"),
     ({"type": "probe", "review": "v0123456789ab", "index": 0}, ""),
@@ -283,6 +302,7 @@ def test_live_text_names_everything_the_agent_proposes_against() -> None:
 
 def test_chat_api_sends_live_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))  # Path.home() on Windows
     pipelines = tmp_path / "pipelines"
     pipelines.mkdir()
     (pipelines / "dev.yaml").write_text("version: 1\nname: dev-cycle\nnodes: {}\n")
@@ -316,3 +336,15 @@ def test_chat_api_sends_live_state(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     # a gate that isn't waiting gets one repair round; the agent's answer without it stands
     assert len(seen) == 2 and "no gate 'g' waiting in run r9" in seen[1].prompt
     assert r.json()["actions"][0]["issues"]
+
+
+def test_people_actions_need_an_admin(tmp_path: Path) -> None:
+    """A non-admin chatting can't propose people changes, and doesn't see PEOPLE."""
+    from dataclasses import replace
+
+    live = replace(LIVE, me={"kind": "person", "name": "kim", "admin": False}, people=None)
+    [out] = check_actions([{"type": "person", "op": "add", "name": "x"}], tmp_path, None, CFG, live)
+    assert "only an admin" in out["issues"][0]
+    text = live_text(live)
+    assert "You are talking with kim (not an admin" in text and "PEOPLE" not in text
+    assert "PEOPLE (Settings > People" in live_text(LIVE) and "bob" in live_text(LIVE)

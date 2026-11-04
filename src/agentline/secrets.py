@@ -37,7 +37,7 @@ def read_secrets(path: Path | None = None) -> dict[str, str]:
     if not p.exists():
         return {}
     out: dict[str, str] = {}
-    for line in p.read_text().splitlines():
+    for line in p.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
@@ -51,8 +51,9 @@ def _write(values: dict[str, str], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".secrets.", suffix=".tmp")
     try:
-        os.fchmod(fd, 0o600)
-        with os.fdopen(fd, "w") as f:
+        if hasattr(os, "fchmod"):  # POSIX; on Windows the per-user profile ACL protects it
+            os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write("# agentline secrets: written by the GUI/CLI; keep this file private\n")
             for k in sorted(values):
                 f.write(f"{k}={values[k]}\n")

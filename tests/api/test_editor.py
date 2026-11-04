@@ -112,7 +112,7 @@ def test_put_model_edits_defaults(client: TestClient, pdir: Path) -> None:
 def test_put_model_conflict(client: TestClient, pdir: Path) -> None:
     got = client.get(f"/api/pipelines/{NAME}").json()
     path = pdir / "ticket-to-eod" / "pipeline.yaml"
-    path.write_text(got["source"] + "# edited elsewhere\n")
+    path.write_text(got["source"] + "# edited elsewhere\n", newline="\n")  # no CRLF on Windows
     r = client.put(
         f"/api/pipelines/{NAME}/model", json={"model": got["model"], "base_source": got["source"]}
     )

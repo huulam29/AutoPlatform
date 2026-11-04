@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { api } from "./api";
+import { useEffect, useMemo, useState } from "react";
+import { AUTH_NEEDED_EVENT, api } from "./api";
 import { Assistant } from "./components/Assistant";
 import { CollapseButton, SidePanel, panels, usePanelBreakpoint, usePanelCollapsed } from "./components/Chrome";
 import { Icon } from "./components/Icon";
@@ -19,6 +19,14 @@ import { isTogglePanelsShortcut, keyLike, type PanelName } from "./lib/ui";
 import type { NodeTypes, PipelineSummary } from "./types";
 import { AppReports } from "./components/AppReports";
 import { LessonsPage } from "./components/Review";
+import { CommandPalette } from "./components/CommandPalette";
+import { EngineBanner } from "./components/EngineBanner";
+import { SignIn } from "./components/SignIn";
+import { setBadge } from "./lib/badge";
+import { buildCommands, dialogOpen, isTypingTarget, SequenceKeys } from "./lib/commands";
+import { REFRESH_EVENT, refresh, restartEngine, useEngineHealth } from "./lib/engine";
+import { isMacApp } from "./lib/native";
+import { startNotifier } from "./lib/notify";
 
 // Hash routes: #/pipelines/<name>, #/runs/<id>, #/lessons, #/settings
 type Route =
@@ -35,7 +43,7 @@ type Route =
   | { view: "fix"; kind: string; id: string };
 
 function parse(hash: string): Route {
-  const [, view, ...rest] = hash.replace(/^#/, "").split("/");
+  const [, view, ...rest] = hash.replace(/^#/, "").split("?")[0].split("/");
   const arg = rest.length ? decodeURIComponent(rest.join("/")) : undefined;
   if (view === "runs") return { view: "runs", id: arg };
   if (view === "settings") return { view: "settings" };
@@ -80,8 +88,40 @@ const go = (path: string) => {
   window.location.hash = path;
 };
 
+/** Sign-in gate: while the engine refuses this browser's token, only <SignIn> shows. */
 export function App() {
+  const [signIn, setSignIn] = useState(false);
+  const [session, setSession] = useState(0); // remounts Studio after a sign-in
+  useEffect(() => {
+    const on = () => setSignIn(true);
+    window.addEventListener(AUTH_NEEDED_EVENT, on);
+    return () => window.removeEventListener(AUTH_NEEDED_EVENT, on);
+  }, []);
+  // a browser (not the Mac app): the service worker routes notification clicks; notifications
+  // start if they were turned on in Settings
+  useEffect(() => {
+    if (isMacApp()) return;
+    if ("serviceWorker" in navigator && window.isSecureContext) {
+      void navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+    startNotifier();
+  }, []);
+  if (signIn)
+    return (
+      <SignIn
+        onDone={() => {
+          setSignIn(false);
+          setSession((n) => n + 1);
+        }}
+      />
+    );
+  return <Studio key={session} />;
+}
+
+function Studio() {
   const route = useRoute();
+  const engine = useEngineHealth();
+  const [palette, setPalette] = useState(false);
   const [pipelines, setPipelines] = useState<PipelineSummary[]>([]);
   const [types, setTypes] = useState<NodeTypes | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -97,9 +137,23 @@ export function App() {
   useEffect(() => {
     api
       .nodeTypes()
-      .then(setTypes)
+      .then((t) => {
+        setTypes(t);
+        setError(null);
+      })
       .catch((e: Error) => setError(e.message));
   }, [typesVersion]);
+  // the engine came back, or Refresh: reload what this page shows
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  useEffect(() => {
+    const on = () => {
+      setTypesVersion((v) => v + 1);
+      setPipelinesVersion((v) => v + 1);
+      setRefreshVersion((v) => v + 1);
+    };
+    window.addEventListener(REFRESH_EVENT, on);
+    return () => window.removeEventListener(REFRESH_EVENT, on);
+  }, []);
   useEffect(() => {
     if (route.view !== "pipelines") return;
     api
@@ -137,12 +191,47 @@ export function App() {
         })
         .catch(() => {});
     void tick();
-    const t = setInterval(tick, 10000);
+    const t = setInterval(tick, 5000);
     return () => {
       live = false;
       clearInterval(t);
     };
-  }, [route.view]);
+  }, [route.view, refreshVersion]);
+  useEffect(() => setBadge(counts.approvals), [counts.approvals]);
+
+  // the Mac app's menu actions: the command palette (Cmd/Ctrl+K) and g-sequences
+  const commands = useMemo(
+    () =>
+      buildCommands({
+        go,
+        refresh,
+        restartEngine: () => void restartEngine().catch((e: Error) => setError(e.message)),
+        toggleChat: () => panels.set("assistant", !panels.collapsed("assistant")),
+        chatKey: isMac ? "⌘J" : "Ctrl+J",
+      }),
+    [],
+  );
+  useEffect(() => {
+    const seq = new SequenceKeys(commands);
+    const on = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "k") {
+        if (!palette && dialogOpen()) return;
+        e.preventDefault();
+        setPalette((p) => !p);
+        return;
+      }
+      if (palette || mod || e.altKey || e.key.length !== 1) return;
+      if (isTypingTarget(e.target as Element | null) || isTypingTarget(document.activeElement) || dialogOpen()) return;
+      const c = seq.press(e.key);
+      if (c) {
+        e.preventDefault();
+        c.run();
+      }
+    };
+    window.addEventListener("keydown", on);
+    return () => window.removeEventListener("keydown", on);
+  }, [commands, palette]);
 
   const chatOpen = !usePanelCollapsed("assistant");
   // Cmd/Ctrl+J opens or closes the Chat from any page
@@ -205,6 +294,15 @@ export function App() {
         </nav>
         <button
           type="button"
+          className="palette-toggle"
+          title={`Commands (${isMac ? "⌘" : "Ctrl+"}K)`}
+          onClick={() => setPalette(true)}
+        >
+          <Icon name="search" />
+          <kbd>{isMac ? "⌘K" : "Ctrl+K"}</kbd>
+        </button>
+        <button
+          type="button"
           className={`chat-toggle ${chatOpen ? "on" : ""}`}
           aria-pressed={chatOpen}
           aria-controls={chatOpen ? "chat-panel" : undefined}
@@ -215,7 +313,9 @@ export function App() {
           Chat
         </button>
       </header>
-      {error && <div className="banner banner-error">{error}</div>}
+      <EngineBanner state={engine} />
+      {error && engine === "up" && <div className="banner banner-error">{error}</div>}
+      {palette && <CommandPalette commands={commands} onClose={() => setPalette(false)} />}
       <SetupDialog onDone={() => setTypesVersion((v) => v + 1)} />
       <main className="main">
         {route.view === "settings" ? (

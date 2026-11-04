@@ -6,7 +6,6 @@ import asyncio
 import contextlib
 import os
 import shutil
-import signal
 import tempfile
 from collections.abc import AsyncIterator, Iterable, Mapping
 from pathlib import Path
@@ -15,6 +14,7 @@ from typing import Any
 from agentline.config import Config
 from agentline.errors import AgentlineError, PermanentError, ValidationError
 from agentline.integrations.http import redact
+from agentline.proctree import kill_tree, resolve_argv
 from agentline.registry import ActionCall
 from agentline.runners.common import base_env, declared_env
 
@@ -79,7 +79,7 @@ async def run_cmd(
     if isinstance(cmd, str):
         proc = await asyncio.create_subprocess_shell(cmd, **kw)
     else:
-        proc = await asyncio.create_subprocess_exec(*cmd, **kw)
+        proc = await asyncio.create_subprocess_exec(*resolve_argv(cmd, full_env), **kw)
     try:
         out, err = await asyncio.wait_for(proc.communicate(), timeout)
     except TimeoutError:
@@ -93,8 +93,7 @@ async def run_cmd(
 
 
 async def _kill(proc: asyncio.subprocess.Process) -> None:
-    with contextlib.suppress(ProcessLookupError, PermissionError):
-        os.killpg(proc.pid, signal.SIGKILL)
+    kill_tree(proc.pid)
     with contextlib.suppress(Exception):
         await proc.wait()
 

@@ -101,7 +101,7 @@ def budget_path() -> Path:
 
 def read_budget() -> dict[str, Any]:
     try:
-        data = json.loads(budget_path().read_text())
+        data = json.loads(budget_path().read_text(encoding="utf-8"))
         return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
         return {}
@@ -111,7 +111,7 @@ def write_budget(data: dict[str, Any]) -> None:
     p = budget_path()
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_name(".budget.json.tmp")
-    tmp.write_text(json.dumps(data, indent=2))
+    tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
     os.replace(tmp, p)
 
 

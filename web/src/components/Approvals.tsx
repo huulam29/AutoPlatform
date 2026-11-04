@@ -1,5 +1,6 @@
 // Gates waiting for a person (GET /api/approvals): approve or reject with a comment.
-import { useEffect, useState } from "react";
+// `#/approvals?reject=<execution>` (Reject… on a notification) focuses that gate's comment.
+import { useEffect, useRef, useState } from "react";
 import { ApiError, api, type Approval } from "../api";
 import { formatTime } from "../lib/runs";
 
@@ -8,6 +9,11 @@ export function Approvals({ onChanged }: { onChanged?: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [comments, setComments] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
+  const rejecting = new URLSearchParams(window.location.hash.split("?")[1] ?? "").get("reject");
+  const focusRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    focusRef.current?.focus();
+  }, [items === null, rejecting]);
   const load = () =>
     api
       .approvals()
@@ -45,7 +51,7 @@ export function Approvals({ onChanged }: { onChanged?: () => void }) {
           <p className="muted">Nothing is waiting for approval.</p>
         ) : (
           items.map((a) => (
-            <section key={a.execution_id} className="card approval">
+            <section key={a.execution_id} className={`card approval ${a.execution_id === rejecting ? "on" : ""}`}>
               <div className="row">
                 <strong>{a.pipeline}</strong>
                 <a className="mono small" href={`#/runs/${a.run_id}`}>
@@ -59,6 +65,7 @@ export function Approvals({ onChanged }: { onChanged?: () => void }) {
               {a.approvers.length > 0 && <p className="small muted">Approvers: {a.approvers.join(", ")}</p>}
               <div className="row">
                 <input
+                  ref={a.execution_id === rejecting ? focusRef : undefined}
                   value={comments[a.execution_id] ?? ""}
                   placeholder="Comment (optional)"
                   aria-label="comment"

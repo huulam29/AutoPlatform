@@ -249,6 +249,23 @@ hit an unresolved decision. Tell the user if the lane changed and why. Never mov
   installed by `serve`); journal has claims and cancels; `timeout` only on agents/actions;
   host commands get `pass_env` only; off-localhost `serve` creates an API token; own checkout
   per `for_each` task. `docs/phase-53.md`. The advisor is tested with fakes only.
+- Phase 54 (web UI parity, spec 006): a plain browser does what the Mac app does: engine-down
+  and quit-unexpectedly banners, Restart (`/api/engine/restart`, `serve` re-execs in place), app
+  info (`/api/app/info`), pipelines folder picker set live (`/api/app/folders`,
+  `/api/app/pipelines-dir`), Copy / Show in folder (`/api/app/reveal`, local only), report zip
+  (`/api/incidents/export`), notifications (`lib/notify.ts`, `public/sw.js`), badges, manifest,
+  command palette (Cmd/Ctrl+K, `g` sequences), sign-in screen (`/api/auth/check`). `serve` holds
+  `<home>/engine.lock` (`enginelock.py`) and `<home>/engine.run.json` (`runmarker.py`).
+  `docs/phase-54.md`. Real notifications and file managers checked by hand only partly.
+- Phase 55 (named identities, spec 007, decision 90): per-person API tokens (`people.py`,
+  `<home>/people.json`, hashes only), `api/identity.py` resolves each request to a person,
+  `shared-token` or the local user; audited API routes take `actor_of(request)`, never
+  `default_actor()` (a test guards it). `/api/people`, `agentline users`, Settings > People, Chat
+  `person`, sign-in shows who you are. `docs/phase-55.md`. Chat links still record the OS user.
+- Phase 56 (native Windows): the engine and the fast suite run on native Windows. `filelock.py`
+  (flock / msvcrt), `proctree.py` (`kill_tree`, PATHEXT lookup for `claude.cmd`), `fsutil.rmtree`,
+  `encoding="utf-8"` on every text open, Windows `SAFE_ENV` names, `.gitattributes` LF.
+  `docs/phase-56.md`.
 - Phase 26: Settings pages (Agents, Model sources, Models, MCP, Skills) have no side panel: a
   page header plus rows that open in place (`components/SettingsRows.tsx`). `docs/phase-26.md`.
 - Phase 28 (failure triage): `triage.py` classifies each failed run / node (auto, in `serve`)
@@ -379,6 +396,8 @@ uv run python -m agentline.api.dev --pipelines examples --db /tmp/x.db --port 87
   `~/.agentline` is never touched; `App()` loads `$AGENTLINE_HOME/secrets.env`.
 - The repo path may contain spaces: shell-quote paths in generated scripts and command strings.
 - Tests are sync and call `asyncio.run(...)` (no pytest-asyncio dependency).
+- On this Windows build machine pytest runs natively since phase 56; WSL (a Linux clone) is
+  still the check for POSIX-only paths.
 - `ruff check --fix` can delete `except ... as e` bindings used only inside lambdas; bind to a
   local (`msg = str(e)`) before the lambda.
 - `Worker.run_until_idle()` waits until no execution is ready/running/failed in the whole

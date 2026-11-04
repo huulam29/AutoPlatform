@@ -39,6 +39,7 @@ from pathlib import Path
 from typing import Any
 
 from agentline.errors import ValidationError
+from agentline.fsutil import rmtree
 
 MAX_SHOW = 6_000
 NO_ENV = ("GITHUB", "GH_", "JIRA", "SLACK", "DISCORD", "TELEGRAM")
@@ -115,9 +116,9 @@ def _spec_of(yaml_text: str, path: str, files: Any, extra: dict[str, str]) -> An
                     shutil.copytree(target_dir / sub, scratch / sub, dirs_exist_ok=True)
         for rel, text in extra.items():
             (scratch / rel).parent.mkdir(parents=True, exist_ok=True)
-            (scratch / rel).write_text(text)
+            (scratch / rel).write_text(text, encoding="utf-8")
         p = scratch / Path(path).name
-        p.write_text(yaml_text)
+        p.write_text(yaml_text, encoding="utf-8")
         return parse_spec(yaml_text, path=p, base_dir=scratch)
 
 
@@ -377,7 +378,7 @@ async def replay(files: Any, t: Target, budget_usd: float, probe_id: str) -> dic
         if ws is not None:
             out["diff"] = await clone_diff(ws, str(t.workspace["start_sha"]))  # type: ignore[index]
     finally:
-        await asyncio.to_thread(shutil.rmtree, root, True)
+        await asyncio.to_thread(rmtree, root, True)
     return out
 
 

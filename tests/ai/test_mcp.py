@@ -23,6 +23,7 @@ from agentline.pipeline.validate import validate_spec
 from agentline.registry import Limits, RunRequest
 from agentline.runners import ClaudeCodeRunner
 from agentline.runners.codex import build_argv as codex_argv
+from tests.fakebin import WINDOWS, fake_bin
 
 FAKE_SERVER = Path(__file__).with_name("fake_mcp_server.py")
 FAKE_CLAUDE = Path(__file__).parents[1] / "runners" / "fake_claude.py"
@@ -128,9 +129,7 @@ def test_validation_names_and_kinds() -> None:
 def test_claude_code_gets_only_the_nodes_servers(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    wrapper = tmp_path / "claude"
-    wrapper.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{FAKE_CLAUDE}" "$@"\n')
-    wrapper.chmod(0o755)
+    wrapper = fake_bin(tmp_path, "claude", script=FAKE_CLAUDE)
     log = tmp_path / "log.json"
     monkeypatch.setenv("FAKE_CLAUDE_LOG", str(log))
     servers = {"gh": {"type": "stdio", "command": "npx", "args": [], "env": {"T": "secret-1"}}}
@@ -145,7 +144,8 @@ def test_claude_code_gets_only_the_nodes_servers(
     argv = seen["argv"]
     assert "--strict-mcp-config" in argv
     assert argv[argv.index("--allowedTools") + 1] == "Read,Grep,Glob,mcp__gh"
-    assert seen["mcp_config"] == {"data": {"mcpServers": servers}, "mode": "0o600"}
+    mode = "0o666" if WINDOWS else "0o600"  # Windows has no owner-only mode bits
+    assert seen["mcp_config"] == {"data": {"mcpServers": servers}, "mode": mode}
     assert "secret-1" not in " ".join(argv)  # the secret is in the file, not argv
     assert not Path(argv[argv.index("--mcp-config") + 1]).exists()  # removed after the run
 

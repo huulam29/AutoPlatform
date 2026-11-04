@@ -127,7 +127,7 @@ def read_pipeline_file(ctx: RunContext[Turn], path: str) -> str:
     p = root / path
     if not p.is_file():
         return f"error: no file {path!r}"
-    return _cap(p.read_text(errors="replace"))
+    return _cap(p.read_text(errors="replace", encoding="utf-8"))
 
 
 def run_details(ctx: RunContext[Turn], run_id: str, node: str = "") -> str:

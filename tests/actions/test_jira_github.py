@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -121,7 +122,10 @@ def test_open_pr_pushes_and_reuses_pr_on_iteration_2(
     h: Harness, fake: tuple[str, FakeState], repos: Repos
 ) -> None:
     _, state = fake
-    h.pipeline(PR_YAML.format(extra=f', remote: "{repos.remote}"'), agent=branch_agent(repos))
+    h.pipeline(
+        PR_YAML.format(extra=f', remote: "{Path(repos.remote).as_posix()}"'),
+        agent=branch_agent(repos),
+    )
     run = h.submit("pr")
     h.drain()
     pr1 = h.app.result(run, "open_pr")
@@ -153,7 +157,10 @@ def test_open_pr_created_once_when_response_is_lost(
 ) -> None:
     _, state = fake
     state.fail_next_pr_create_after_write = True  # PR created, then a 502
-    h.pipeline(PR_YAML.format(extra=f', remote: "{repos.remote}"'), agent=branch_agent(repos))
+    h.pipeline(
+        PR_YAML.format(extra=f', remote: "{Path(repos.remote).as_posix()}"'),
+        agent=branch_agent(repos),
+    )
     run = h.submit("pr")
     h.drain()
     assert state.pr_creates == 1

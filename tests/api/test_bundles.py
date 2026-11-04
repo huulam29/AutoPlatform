@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from agentline import App, SqliteLedger
 from agentline.api.server import create_server
 from agentline.config import Config
+from tests.fakebin import WINDOWS
 
 TOML = """\
 [providers.mine]
@@ -114,7 +115,8 @@ def test_import_reports_missing_then_adds_settings(
     assert body["name"] == "review/pipeline" and body["applied"] == []
     assert body["missing"]["models"] == ["small"] and body["missing"]["mcp"] == ["gh"]
     assert body["issues"]  # unknown model / MCP server until the settings exist
-    assert (pipelines2 / "review/scripts/lint.sh").stat().st_mode & 0o111
+    if not WINDOWS:  # no executable bit there
+        assert (pipelines2 / "review/scripts/lint.sh").stat().st_mode & 0o111
     assert c2.post("/api/import", content=data).status_code == 409
     r = c2.post("/api/import?folder=review2&apply_settings=true", content=data).json()
     assert r["name"] == "review2/pipeline"

@@ -126,6 +126,11 @@ class LivePipelines:
             return None
         return self.reload(reason)
 
+    def set_dir(self, pipelines_dir: str | Path) -> dict[str, Any]:
+        """Serve another pipelines folder from now on (Settings > General in a browser)."""
+        self.dir = Path(pipelines_dir)
+        return self.reload("pipelines folder changed")
+
     # -- reload -----------------------------------------------------------------------------
     def reload(self, reason: str = "reload") -> dict[str, Any]:
         """Read the config and every pipeline again and swap them in. Never raises: a broken

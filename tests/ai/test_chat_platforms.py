@@ -306,3 +306,36 @@ def test_chat_api_lists_every_platform(tmp_path: Path, monkeypatch: pytest.Monke
     assert {"SLACK_APP_TOKEN", "SLACK_BOT_TOKEN", "DISCORD_BOT_TOKEN"} <= keys
     with pytest.raises(WebSocketClosed):
         raise WebSocketClosed("x")
+
+
+@pytest.mark.parametrize("platform", ["slack", "discord"])
+def test_slack_and_discord_approvals_name_the_person(
+    platform: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Spec 011: the link acts as the person who asked for its code, else the chat user."""
+    from agentline.builtins import default_registry
+    from agentline.people import PeopleStore
+    from agentline.pipeline import build_pipeline, parse_spec
+
+    monkeypatch.setenv("AGENTLINE_USER", "osuser")
+    app = App(SqliteLedger(tmp_path / "l.db"), backoff_base=0.0)
+    src = 'version: 1\nname: g\nnodes:\n  ok: { type: gate, prompt: "Go?" }\n'
+    app.register_pipeline(build_pipeline(parse_spec(src, base_dir=tmp_path), default_registry()))
+    PeopleStore().add("alice")
+    t = FakeTransport()
+    link = ChatLink(app, poll_wait=0, platform=platform, transport=lambda: t)
+    t.say(state.ChatState(platform).new_pair_code("alice"))
+    asyncio.run(link.step(t))
+
+    def approve() -> list[str]:
+        run_id = app.submit_sync("g", {}).run_id
+        asyncio.run(app.worker().run_until_idle())
+        t.say(f"/approve {run_id}")
+        asyncio.run(link.step(t))
+        with app.ledger.tx() as tx:
+            return [(a.actor, a.detail.get("via")) for a in tx.list_audit(run_id)
+                    if a.action == "approve"]  # fmt: skip
+
+    assert approve() == [("alice", f"{platform}:@me")]
+    PeopleStore().revoke("alice")
+    assert approve() == [(f"{platform}:@me", f"{platform}:@me")]

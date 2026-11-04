@@ -165,7 +165,7 @@ def used_by(files: Any) -> dict[str, list[dict[str, str]]]:
     out: dict[str, list[dict[str, str]]] = {}
     for path in files.files():
         try:
-            spec = parse_spec(path.read_text(), path=path, base_dir=path.parent)
+            spec = parse_spec(path.read_text(encoding="utf-8"), path=path, base_dir=path.parent)
         except Exception:  # a broken pipeline: the editor shows why
             continue
         for n in spec.nodes.values():
@@ -225,6 +225,7 @@ def _test_stdio(s: McpServer, timeout: float, environ: dict[str, str]) -> dict[s
         stderr=subprocess.PIPE,
         env=env,
         text=True,
+        encoding="utf-8",
     )
     lines: queue.Queue[str | None] = queue.Queue()
 

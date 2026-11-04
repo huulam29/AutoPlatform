@@ -4,11 +4,15 @@
 // straight to /api/secrets, never to the model.
 import { Icon } from "./Icon";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { TokenDialog } from "./settings/PeoplePage";
 import { ApiError, api } from "../api";
 import { ADD_HARNESS, chatDefaultModelLabel, chatModelOptions, modelAfterHarnessChange } from "../lib/ai";
 import { AddHarnessDialog, AddHarnessOption } from "./AddHarness";
 import { saveBlob } from "../lib/download";
 import { isMacApp, nativeCall } from "../lib/native";
+import { useAppInfo } from "../lib/appinfo";
+import { restartEngine } from "../lib/engine";
+import { exportReports } from "./AppReports";
 import {
   actionDetails,
   actionTitle,
@@ -80,7 +84,13 @@ export const deps: ApplyDeps = {
   chatTest: api.chatTest,
   chatUnlink: api.chatUnlink,
   chatNotify: api.chatNotify,
-  native: (action) => nativeCall<{ path?: string }>(action),
+  native: (action, args) => nativeCall<{ path?: string; pipelinesDir?: string; configPath?: string }>(action, args),
+  macApp: isMacApp,
+  restartEngine,
+  setPipelinesDir: api.setPipelinesDir,
+  reveal: api.reveal,
+  exportReports,
+  incidentSeen: api.incidentSeen,
   assistantApply: api.assistantApply,
   exportPipeline: async (name) => {
     const { blob, filename } = await api.exportPipeline(name);
@@ -110,6 +120,10 @@ export const deps: ApplyDeps = {
   githubLogin: api.githubLogin,
   githubTest: api.githubTest,
   archiveConversation: api.archiveConversation,
+  addPerson: api.addPerson,
+  reissuePerson: api.reissuePerson,
+  setPersonAdmin: api.setPersonAdmin,
+  revokePerson: api.revokePerson,
 };
 
 export function Assistant({
@@ -127,6 +141,7 @@ export function Assistant({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loaded, setLoaded] = useState(false); // nothing is saved before the open one is read
   const [archived, setArchived] = useState(false); // the open one sits under Archived
+  const [issued, setIssued] = useState<{ name: string; token: string } | null>(null); // person action
   const [view, setView] = useState<"chat" | "history">("chat");
   const [historyTick, setHistoryTick] = useState(0);
   const [harness, setHarness] = useState(() => loadHarness(storage));
@@ -379,7 +394,8 @@ export function Assistant({
     if (!a) return;
     setState(mi, ai, "applying");
     try {
-      const r = await applyAction(a, deps, input);
+      const { issuedToken, ...r } = await applyAction(a, deps, input);
+      if (issuedToken) setIssued(issuedToken); // shown once in a popup; never on the card or in history
       if (r.changed === "settings") onSettingsChanged();
       if (r.changed === "pipelines" && r.pipeline) {
         editorLink.notifyChanged(r.pipeline);
@@ -404,6 +420,7 @@ export function Assistant({
   return (
     <div className="assistant">
       <PanelHeader name="assistant" side="right" label="Chat" />
+      {issued && <TokenDialog name={issued.name} token={issued.token} onClose={() => setIssued(null)} />}
       {adding && (
         <AddHarnessDialog
           presets={types?.ai?.presets ?? []}
@@ -708,7 +725,9 @@ export function ActionCard({
   const invalid = a.issues.length > 0;
   const input = cardInput(a);
   const details = actionDetails(a);
-  const native = a.type === "engine" && !isMacApp();
+  const local = useAppInfo()?.can_reveal ?? false;
+  // reveal opens a file manager on the engine's machine: not from a browser elsewhere
+  const native = a.type === "engine" && a.op === "reveal" && !isMacApp() && !local;
   return (
     <div className={`action-card ${done ? "done" : ""}`}>
       <div className="action-head">
@@ -759,7 +778,7 @@ export function ActionCard({
           {i}
         </p>
       ))}
-      {native && <p className="small muted">This one needs the Mac app.</p>}
+      {native && <p className="small muted">This one works only on the engine's own machine.</p>}
       {error && <p className="issue small">{error}</p>}
       {!done && input === "secret" && (
         <input
@@ -768,6 +787,15 @@ export function ActionCard({
           value={value}
           placeholder="paste the key"
           aria-label={`value for ${"name" in a ? a.name : "the key"}`}
+          onChange={(e) => setValue(e.target.value)}
+        />
+      )}
+      {!done && input === "path" && (
+        <input
+          className="mono"
+          value={value}
+          placeholder="full folder path on the engine's machine"
+          aria-label="pipelines folder"
           onChange={(e) => setValue(e.target.value)}
         />
       )}
@@ -785,7 +813,7 @@ export function ActionCard({
           disabled={
             state === "applying" ||
             native ||
-            (input === "secret" && !value) ||
+            ((input === "secret" || input === "path") && !value.trim()) ||
             (input === "file" && !file) ||
             (invalid && a.type !== "pipeline")
           }
@@ -795,7 +823,7 @@ export function ActionCard({
               : undefined
           }
           onClick={() => {
-            onApply(input === "secret" ? { value } : input === "file" && file ? { file } : {});
+            onApply(input === "secret" || input === "path" ? { value } : input === "file" && file ? { file } : {});
             if (input === "secret") setValue("");
           }}
         >

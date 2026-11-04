@@ -54,7 +54,7 @@ def list_templates() -> list[Template]:
     for d in sorted(_root().iterdir(), key=lambda c: c.name):
         if not d.is_dir() or not (d / PIPELINE_FILE).is_file():
             continue
-        m = _DESCRIPTION.search((d / PIPELINE_FILE).read_text())
+        m = _DESCRIPTION.search((d / PIPELINE_FILE).read_text(encoding="utf-8"))
         desc = m.group(1).strip().strip("'\"") if m else ""
         out.append(Template(d.name, desc, d))
     return out
@@ -92,7 +92,7 @@ def copy_template(
     plan: list[tuple[Path, bytes]] = []
     for rel, src in t.files():
         if rel == PIPELINE_FILE:
-            data = render_pipeline(src.read_text(), pipeline_name).encode()
+            data = render_pipeline(src.read_text(encoding="utf-8"), pipeline_name).encode()
             plan.insert(0, (folder / "pipeline.yaml", data))
         else:
             plan.append((folder / rel, src.read_bytes()))

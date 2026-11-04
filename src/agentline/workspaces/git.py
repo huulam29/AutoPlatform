@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from agentline.config import RepoConfig
+from agentline.fsutil import rmtree
 from agentline.runners.common import GIT_IDENTITY, base_env, run_process
 
 BRANCH_PREFIX = "agentline/"
@@ -172,6 +173,4 @@ async def _remove_stale(mirror: Path, branch: str) -> None:
 
 
 async def _rmtree(path: Path) -> None:
-    import shutil
-
-    await asyncio.to_thread(shutil.rmtree, path, True)
+    await asyncio.to_thread(rmtree, path, True)

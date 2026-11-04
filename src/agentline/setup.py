@@ -56,7 +56,7 @@ def setup_path() -> Path:
 
 def read_state() -> dict[str, Any]:
     try:
-        data = json.loads(setup_path().read_text())
+        data = json.loads(setup_path().read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
     if not isinstance(data, dict):
@@ -72,7 +72,7 @@ def write_state(state: dict[str, Any]) -> None:
     path = setup_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(".setup.json.tmp")
-    tmp.write_text(json.dumps(state, indent=2))
+    tmp.write_text(json.dumps(state, indent=2), encoding="utf-8")
     os.replace(tmp, path)
 
 

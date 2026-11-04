@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 import tomllib
 from pathlib import Path
 
@@ -13,6 +12,7 @@ from agentline.config import Config
 from agentline.errors import ValidationError
 from agentline.workspaces.images import resolve_image
 from tests.cli.helpers import CONFIG, Cli
+from tests.fakebin import fake_bin
 
 # -- the writer -------------------------------------------------------------------------------
 
@@ -121,9 +121,7 @@ def test_approve_proposal_builds_the_retry_image(
         "if sys.argv[1:3] == ['image', 'inspect']: sys.exit(1)\n"
         "sys.stdin.read()\n"
     )
-    docker = tmp_path / "docker"
-    docker.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{script}" "$@"\n')
-    docker.chmod(0o755)
+    docker = fake_bin(tmp_path, "docker", script=script)
     monkeypatch.setenv("AGENTLINE_DOCKER", str(docker))
     run_id, pid = _needs_proposal(cli)
     out = cli.ok("approve", run_id, "--proposal", pid)

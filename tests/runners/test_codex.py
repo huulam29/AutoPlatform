@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +16,7 @@ from agentline.runners import CodexRunner, RunnerError
 from agentline.runners.agent_cli import render_args
 from agentline.runners.codex import build_argv, parse_events
 from agentline.runners.common import run_process
+from tests.fakebin import fake_bin
 
 FAKE = Path(__file__).with_name("fake_codex.py")
 PRICES = {"input_usd_per_mtok": 2.0, "output_usd_per_mtok": 10.0}
@@ -24,9 +24,7 @@ PRICES = {"input_usd_per_mtok": 2.0, "output_usd_per_mtok": 10.0}
 
 @pytest.fixture
 def codex_bin(tmp_path: Path) -> str:
-    wrapper = tmp_path / "codex"
-    wrapper.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{FAKE}" "$@"\n')
-    wrapper.chmod(0o755)
+    wrapper = fake_bin(tmp_path, "codex", script=FAKE)
     return str(wrapper)
 
 
