@@ -1,72 +1,72 @@
-# Phase 55: the engine and tests on native Windows
+# Phase 55: named identities
 
-Approach: Direct (Lane 0, override 2: a bug fix with known failing behaviour; the diagnosis is
-below instead of spec files).
+Approach: Spec Kit ([specs/007-named-identities](../specs/007-named-identities/spec.md)), Lane 2.
+Built on phase 54 (the browser sign-in screen). Decision 90.
 
-## Diagnosis
+## Why
 
-On Windows 11 (Python 3.11, Git Bash) `import agentline` failed at once: `incidents.py`,
-`issues.py` and `chatlink/state.py` import `fcntl`. With that stubbed, the earlier sample
-(`specs/README.md`) had 54 failures, and a full run showed these causes:
+Constitution Principle II says approvals, rejections, retries, cancels and deploys write an audit
+row naming who acted. The API had one shared token, and every action through it was recorded as
+the engine process's OS user (`default_actor()`). Once phase 54 let teammates use Studio from other
+machines, every remote approval read as the person who started the server.
 
-| Cause | Where |
-|---|---|
-| `fcntl.flock` for the incidents, issues and chat-link lock files | 3 modules |
-| `os.killpg` on timeout / cancel; `start_new_session` does nothing on Windows | `runners/common.py`, `actions/_util.py` |
-| `create_subprocess_exec("claude")` only finds `claude.exe`, not npm's `claude.cmd` | same |
-| Children got no `SYSTEMROOT`, `TEMP`, `USERPROFILE`, ... (the env allowlist was POSIX names) | `runners/common.py` `SAFE_ENV` |
-| `read_text()` / `open()` without `encoding=` read UTF-8 files as cp1252 (`lessons.md`'s "·") | 89 calls in `src/` |
-| `shutil.rmtree` can't delete git's read-only object files (probe clones stayed behind) | `probe.py`, `workspaces/git.py`, skills |
-| `os.fchmod` (secrets file), `os.getuid` (container `--user`) don't exist | `secrets.py`, `workspaces/container.py` |
-| `os.kill(pid, 0)` *terminates* a process on Windows (parent watchdog) | `cli/commands.py` |
-| `core.autocrlf` checked everything out CRLF; the editor API returns files byte for byte | `tests/api/test_editor.py` |
-| Tests: `#!/bin/sh` fake CLIs, `os.getuid`, mode bits, Windows paths inside YAML/TOML strings, `HOME` instead of `USERPROFILE` | `tests/` |
+## What is built
 
-## What changed
+- **People** (`src/agentline/people.py`): name, admin flag, created at, SHA-256 of the current
+  token, in `<home>/people.json` (0600, atomic write, re-read when the file changes so a CLI
+  revoke reaches a running server on its next request). Tokens are `alp_` + 256 random bits,
+  shown once, kept nowhere. A corrupt file matches nobody and refuses writes (never overwritten).
+- **Identity per request** (`src/agentline/api/identity.py`): one dependency on every `/api`
+  router (replaces `_token_check`):
+  - a person's token -> that person;
+  - the shared `AGENTLINE_API_TOKEN` from another machine -> `shared-token` (still works, admin);
+  - the shared token from the engine's own machine (loopback, no proxy headers) -> the local OS
+    user. The Mac app always sends the shared token over loopback, so its approvals keep naming
+    the Mac user (`AGENTLINE_USER`), as before. Behind a reverse proxy on the same machine that
+    adds no `X-Forwarded-For`, shared-token users would read as the local user, as they did before;
+  - no bearer and no shared token (loopback-only engine) -> the local OS user (admin);
+  - anything else -> 401, also on an open engine (a revoked token is noticed, not downgraded).
+- **Audit rows**: `POST /runs/{id}/approve|reject|retry` and `/runs/{id}/messages/{m}/apply`
+  (run-chat cards that approve, reject, retry or cancel) pass `actor_of(request)`. Gates with
+  `approvers:` now check against the person's name. `tests/api/test_identity.py` fails if any
+  `api/` module calls `default_actor()` again.
+- **Managing people**: `GET/POST /api/people`, `POST /api/people/{name}/token`,
+  `PUT /api/people/{name}/admin`, `DELETE /api/people/{name}`. Writes need an admin identity
+  (local user, shared token, or a person marked admin), else 403; non-admins list only
+  themselves. Each change writes an audit row (`person.add|token|admin|revoke`) naming who did
+  it. A token just issued is taught to the running redactor.
+- **CLI**: `agentline users add NAME [--admin] | list [--json] | token NAME | admin NAME on|off |
+  revoke NAME`. `add` and `token` print the token once.
+- **Studio**: Settings > People (`components/settings/PeoplePage.tsx`): list, Add person, New
+  token, Make/Remove admin, Revoke, a one-time token popup (`TokenDialog`). The sign-in screen
+  asks for "your token"; Settings > General says who this browser is signed in as
+  (`/api/auth/check` now returns `identity`).
+- **Chat parity**: action `person` (op add / token / admin / revoke), checked against LIVE STATE
+  PEOPLE (listed for admins only; LIVE STATE also says who is chatting). Applied by Studio through
+  the same API with the browser's own token, so the same 403 applies; never auto-applied. The
+  new token opens the popup and is kept off the card result and the conversation history. Chat
+  apps (Telegram, Slack, Discord) answer "apply this one in the app".
 
-- `filelock.py`: `locked_file(path)`, an exclusive cross-process lock (`fcntl.flock` on POSIX,
-  `msvcrt.locking` with retries on Windows). Incidents, issues and the chat-link state use it.
-- `proctree.py`: `kill_tree(pid)` (process group on POSIX, `taskkill /T /F` on Windows) and
-  `resolve_argv(argv, env)` (Windows: a bare program name is looked up with PATHEXT, so
-  `claude.cmd`, `gh.cmd` and other npm/pip shims start). Both the runner and the action command
-  paths use them.
-- `fsutil.py`: `rmtree` that clears the read-only flag and retries.
-- Every text `open` / `read_text` / `write_text` / `os.fdopen` in `src/` says `encoding="utf-8"`;
-  subprocess text pipes that carry file content (git, gh, MCP, skills) too.
-- `SAFE_ENV` gains the Windows variables a child needs to start (they aren't set on POSIX).
-- `secrets.py` sets 0600 only where `os.fchmod` exists; on Windows the file sits in the user's
-  profile, whose ACL already keeps other users out.
-- `.gitattributes`: `* text=auto eol=lf` (`*.cmd`/`*.bat` CRLF). An existing Windows clone gets
-  LF files after `git rm -r --cached . && git reset --hard` (with nothing uncommitted).
-- Tests: `tests/fakebin.py` `fake_bin(folder, name, script=|code=)` writes `name.cmd` on Windows
-  and an executable `#!/bin/sh` wrapper elsewhere; shell fakes (`gh`, `claude auth status`) are
-  Python now.
+## Checked
 
-## What stays POSIX-only
+- `uv run pytest` (WSL Ubuntu), `ruff check`, `ruff format --check`.
+- `web`: `npx tsc --noEmit`, `npx vitest run`, `npm run build`.
+- New tests: `tests/test_people.py`, `tests/api/test_identity.py` (every audited route by person,
+  shared token and local user; revoke and reissue; admin rules; a leak search of responses,
+  audit rows, the home folder and the test folder for the token), `tests/cli/test_users.py`,
+  person cases in `tests/ai/test_assistant_parity.py`, `web/src/lib/people.test.ts`, person
+  cases in `web/src/lib/assistantApply.test.ts`.
 
-| Feature | On Windows | Test |
-|---|---|---|
-| Container workspaces (`workspace: {type: container}`) | Refused with a permanent error naming WSL / `type: local`: they mount host paths as `path:path` and map the uid | `tests/workspaces/test_container.py` skipped |
-| `shell.run`, `env.deploy`, `env.test` string commands | Run through `cmd.exe`, not `/bin/sh`: POSIX shell syntax in a pipeline doesn't work there. Argv lists work | 12 tests in `tests/actions/test_shell_env.py` skipped (`posix_shell`) |
-| Parent-pid watchdog (`AGENTLINE_PARENT_PID`, Mac app only) | Off | `test_parent_watchdog.py` (slow) skipped |
-| Secrets file mode 0600 | Profile ACL instead | mode asserts skipped |
-| Chaos demos (`demo.chaos`, `demo.e2e`) kill workers with SIGKILL | Not tried on Windows | slow, not in the fast suite |
+- Clicked through in a browser against a throwaway dev server with a shared token set: signed in
+  with a person's token (from `agentline users add --admin`), Settings > People said "You are
+  alice (admin)", Add person showed bob's token once, General said "signed in as alice (admin)",
+  and `agentline audit` named `alice` for adding bob; `people.json` was `-rw-------`.
 
-## Verification
+## Not done
 
-- Windows 11, Git Bash, Python 3.11: `uv run pytest -m "not slow"` gives 975 passed, 54 skipped,
-  0 failed. The skips are 35 Postgres contract tests (no `AGENTLINE_PG_DSN`), 2 smoke tests,
-  12 POSIX-shell tests and 5 container tests.
-- Ubuntu (WSL 2), Python 3.14, fresh clone of the branch: 992 passed, 37 skipped. `ruff check`
-  and `ruff format --check` are clean.
-- `agentline serve` on Windows (scratch `AGENTLINE_HOME`, db and config; `web/dist` built
-  with `npm ci && npm run build`) serves Studio on `127.0.0.1`. `/api/pipelines` lists the
-  example, and the editor opens `ticket-to-eod` and shows it as valid.
-- Not tried on Windows: a real agent CLI (`claude.cmd`) running a node; the slow chaos and e2e
-  tests; Docker Desktop.
-
-## Known limits
-
-- Fake CLIs are `.cmd` shims, so argv goes through `cmd.exe`. An argument containing a newline
-  would be cut there. Real npm shims (`claude.cmd`) have the same limit. The runners pass
-  prompts as arguments, so a multi-line prompt to a `.cmd`-installed CLI on Windows is untested.
+- Roles: every identity keeps the powers the shared token has (settings, keys, pipelines). Only
+  people management is admin-only.
+- Chat links still record the engine's OS user (`chatlink/service.py` uses `default_actor()`);
+  naming the chat-app user is a follow-up.
+- The CLI still acts as `$AGENTLINE_USER` / `$USER`.
+- The Mac app is unchanged (see the shared-token rule above); not run on a Mac in this phase.

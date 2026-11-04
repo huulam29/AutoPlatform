@@ -34,6 +34,7 @@ KINDS = (
     "api_error",
     "worker_error",
     "engine_exit",
+    "engine_unclean_exit",  # serve's start marker was still there (agentline.runmarker)
     "app_crash",
     "app_exception",
     "app_unclean_exit",

@@ -13,7 +13,8 @@ In (only from the linked user; anyone else gets a "private bot" note):
 Out (Settings > Chat > Notify): gates waiting for approval (Approve / Reject; a gate that
 guards a deploy-class step asks for a second tap), questions from `chat.ask`, runs that end
 dead or needs-review, their failure triage verdicts, and finished runs. Every decision is
-audited with `via: <platform>:@<user>`.
+audited with `via: <platform>:@<user>`; its actor is the person who asked for the pairing code
+while they are in the people list, else that chat user (`link_actor`, spec 011).
 """
 
 from __future__ import annotations
@@ -26,12 +27,29 @@ import time
 from pathlib import Path
 from typing import Any
 
-from agentline.app import App, default_actor
+from agentline.app import App
 from agentline.chatlink import state
 from agentline.chatlink.telegram import MAX_TEXT, Telegram, TelegramError, token
 from agentline.errors import ValidationError
+from agentline.people import PeopleStore
 
 log = logging.getLogger("agentline.chatlink")
+
+
+def link_via(platform: str, link: dict[str, Any]) -> str:
+    """The chat user a link is paired with: `<platform>:@<username or user id>`."""
+    return f"{platform}:@{link.get('username') or link.get('user_id')}"
+
+
+def link_actor(platform: str, link: dict[str, Any], people: PeopleStore | None = None) -> str:
+    """Who a chat link's actions are recorded as (spec 011): the person who asked for its pairing
+    code while they are still in the people list, else the chat user. Never the engine's OS user.
+    """
+    person = link.get("person")
+    if person and (people or PeopleStore()).get(str(person)) is not None:
+        return str(person)
+    return link_via(platform, link)
+
 
 HELP = (
     "agentline commands:\n"
@@ -69,6 +87,7 @@ class ChatLink:
         self.files_factory = files  # tests: a callable returning PipelineFiles
         self.platform = platform
         self.state = state.ChatState(platform)
+        self.people = PeopleStore()  # re-reads people.json when it changes (link_actor)
         # () -> a connected transport, or None while its keys aren't set
         self.transport_factory = transport or (lambda: Telegram(t) if (t := token()) else None)
         self.turn_lock = asyncio.Lock()
@@ -175,6 +194,7 @@ class ChatLink:
                     "user_id": frm.get("id"),
                     "username": frm.get("username") or frm.get("first_name") or "",
                     "linked_at": time.time(),
+                    **({"person": pair["person"]} if pair.get("person") else {}),
                 }
                 d.pop("pair", None)
             await asyncio.to_thread(
@@ -341,8 +361,8 @@ class ChatLink:
         link: dict[str, Any],
         comment: str = "",
     ) -> str:
-        actor = default_actor()
-        via = f"{self.platform}:@{link.get('username') or link.get('user_id')}"
+        actor = self.actor(link)
+        via = self._via(link)
         fn = self.app.approve if approve else self.app.reject
         try:
             gate = await fn(run_id, node, actor=actor, comment=comment or f"from {via}", via=via)
@@ -353,9 +373,9 @@ class ChatLink:
         return f"{'Approved' if approve else 'Rejected'} {gate.node_id} of run {run_id}."
 
     async def retry(self, run_id: str, node: str | None, link: dict[str, Any]) -> str:
-        via = f"{self.platform}:@{link.get('username') or link.get('user_id')}"
+        via = self._via(link)
         try:
-            n = await self.app.retry(run_id, node_id=node, actor=default_actor(), via=via)
+            n = await self.app.retry(run_id, node_id=node, actor=self.actor(link), via=via)
         except ValidationError as e:
             return f"Couldn't retry: {e}"
         if not n:
@@ -381,7 +401,10 @@ class ChatLink:
 
     # -- run conversations (chat start nodes, agentline.runchat) ----------------------------
     def _via(self, link: dict[str, Any]) -> str:
-        return f"{self.platform}:@{link.get('username') or link.get('user_id')}"
+        return link_via(self.platform, link)
+
+    def actor(self, link: dict[str, Any]) -> str:
+        return link_actor(self.platform, link, self.people)
 
     def _start_input(self, name: str) -> tuple[str, Any]:
         from agentline.pipeline.start import start_info
@@ -412,7 +435,7 @@ class ChatLink:
 
         try:
             out = await runchat.apply_card(self.app, card["run"], int(card["message"]),
-                                           int(card["index"]), actor=default_actor(),
+                                           int(card["index"]), actor=self.actor(link),
                                            via=self._via(link), dismiss=dismiss)  # fmt: skip
         except ValidationError as e:
             await asyncio.to_thread(tg.send, chat, f"Couldn't: {e}")

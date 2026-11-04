@@ -8,6 +8,18 @@ import { isMacApp, nativeCall } from "../lib/native";
 import { formatTime } from "../lib/runs";
 import { appReportSource, githubIssueMarkdown, reportLine, type GithubStatus, type TriageRecord } from "../lib/triage";
 import { Status } from "./Icon";
+import { saveBlob } from "../lib/download";
+import { useAppInfo } from "../lib/appinfo";
+
+/** Export reports…: the Mac app's zip through the bridge; in a browser a download. */
+export async function exportReports(): Promise<void> {
+  if (isMacApp()) {
+    await nativeCall("problems.export");
+    return;
+  }
+  const { blob, filename } = await api.exportReports();
+  await saveBlob(blob, filename);
+}
 
 export function AppReports() {
   const [reports, setReports] = useState<TriageRecord[]>([]);
@@ -48,11 +60,13 @@ export function AppReports() {
             Scan for crash reports
           </button>
         )}
-        {isMacApp() && (
-          <button type="button" title="A .zip with every report, attachments, system info and the engine log" onClick={() => void nativeCall("problems.export")}>
-            Export reports…
-          </button>
-        )}
+        <button
+          type="button"
+          title="A .zip with every report, attachments, system info and the engine log"
+          onClick={() => void exportReports().catch((e: Error) => setMsg(e.message))}
+        >
+          Export reports…
+        </button>
         <button
           type="button"
           className="danger"
@@ -84,6 +98,7 @@ function githubLine(gh: GithubStatus | null): string {
 }
 
 function AppReportCard({ report: r, github, onChanged }: { report: TriageRecord; github: GithubStatus | null; onChanged: () => Promise<void> }) {
+  const local = useAppInfo()?.can_reveal ?? false;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<"" | "copied" | "failed">("");
@@ -147,6 +162,15 @@ function AppReportCard({ report: r, github, onChanged }: { report: TriageRecord;
         {r.incident && isMacApp() && (
           <button type="button" className="link" onClick={() => void nativeCall("finder.incident", { id: r.incident })}>
             Show in Finder
+          </button>
+        )}
+        {r.incident && !isMacApp() && local && (
+          <button
+            type="button"
+            className="link"
+            onClick={() => void api.reveal({ target: "incidents" }).catch(() => {})}
+          >
+            Show in folder
           </button>
         )}
         <button
