@@ -77,6 +77,10 @@ function fakeDeps(): { deps: ApplyDeps; calls: string[] } {
     reviewProbe: rec("reviewProbe", { status: "done", verdict: "better", error: null } as unknown as Probe),
     lessonAdd: rec("lessonAdd", { id: 3 } as unknown as Lesson),
     archiveConversation: rec("archiveConversation", {}),
+    addPerson: rec("addPerson", { person: { name: "bob", admin: false, created_at: 1 }, token: "alp_secret" }),
+    reissuePerson: rec("reissuePerson", { person: { name: "bob", admin: false, created_at: 1 }, token: "alp_new" }),
+    setPersonAdmin: rec("setPersonAdmin", {}),
+    revokePerson: rec("revokePerson", {}),
   };
   return { deps, calls };
 }
@@ -135,6 +139,10 @@ const CASES: [Record<string, unknown>, string, Record<string, unknown>?][] = [
   [{ type: "probe", review: "v1", index: 0 }, "reviewProbe v1 0", { result: "Probe: better than the original (1 run)" }],
   [{ type: "conversation", op: "archive", id: "c-1" }, "archiveConversation c-1 true", { conversations: true, result: "Archived (History > Archived)" }],
   [{ type: "conversation", op: "unarchive", id: "c-1" }, "archiveConversation c-1 false", { conversations: true, result: "Back in History" }],
+  [{ type: "person", op: "add", name: "bob", admin: true }, "addPerson bob true", { issuedToken: { name: "bob", token: "alp_secret" } }],
+  [{ type: "person", op: "token", name: "bob" }, "reissuePerson bob", { issuedToken: { name: "bob", token: "alp_new" } }],
+  [{ type: "person", op: "admin", name: "bob", admin: false }, "setPersonAdmin bob false", { result: "bob is not an admin" }],
+  [{ type: "person", op: "revoke", name: "bob" }, "revokePerson bob", { result: "bob revoked; their token no longer works" }],
   [
     { type: "pipeline_lesson", pipeline: "dev/pipeline", node: "write", cue: "when x", lesson: "do y", confidence: "high", why: "w" },
     'lessonAdd dev/pipeline {"node":"write","cue":"when x","lesson":"do y","confidence":"high"}',
@@ -152,6 +160,13 @@ describe("Chat parity: applying each action", () => {
       expect(actionTitle(act(a))).toBeTruthy();
     });
   }
+
+  it("a person's new token is kept out of the card's result (shown once in a popup)", async () => {
+    const { deps } = fakeDeps();
+    const r = await applyAction(act({ type: "person", op: "add", name: "bob" }), deps);
+    expect(r.result).not.toContain("alp_secret");
+    expect(needsOwnClick(act({ type: "person", op: "revoke", name: "bob" }))).toBe(true);
+  });
 
   it("a key's value goes to /api/secrets only, and is required", async () => {
     const { deps, calls } = fakeDeps();

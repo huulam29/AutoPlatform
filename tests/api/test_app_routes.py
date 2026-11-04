@@ -100,14 +100,20 @@ def test_app_info(client: TestClient, pdir: Path, monkeypatch: pytest.MonkeyPatc
 
 def test_auth_check_never_returns_the_token(app: App, pdir: Path, tmp_path: Path) -> None:
     with make(app, pdir, tmp_path) as open_client:
-        assert open_client.get("/api/auth/check").json() == {"token_required": False, "ok": True}
+        r = open_client.get("/api/auth/check").json()
+        assert r["token_required"] is False and r["ok"] is True
+        assert r["identity"]["kind"] == "local"
     with make(app, pdir, tmp_path, token="s3cret-token") as c:
         assert c.get("/api/app/info").status_code == 401
         no = c.get("/api/auth/check")
         bad = c.get("/api/auth/check", headers={"Authorization": "Bearer nope"})
         good = c.get("/api/auth/check", headers={"Authorization": "Bearer s3cret-token"})
-        assert no.json() == bad.json() == {"token_required": True, "ok": False}
-        assert good.json() == {"token_required": True, "ok": True}
+        assert no.json() == bad.json() == {"token_required": True, "ok": False, "identity": None}
+        assert good.json() == {
+            "token_required": True,
+            "ok": True,
+            "identity": {"kind": "shared", "name": "shared-token", "admin": True},
+        }
         assert all("s3cret-token" not in r.text for r in (no, bad, good))
 
 

@@ -4,6 +4,7 @@
 // straight to /api/secrets, never to the model.
 import { Icon } from "./Icon";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { TokenDialog } from "./settings/PeoplePage";
 import { ApiError, api } from "../api";
 import { ADD_HARNESS, chatDefaultModelLabel, chatModelOptions, modelAfterHarnessChange } from "../lib/ai";
 import { AddHarnessDialog, AddHarnessOption } from "./AddHarness";
@@ -119,6 +120,10 @@ export const deps: ApplyDeps = {
   githubLogin: api.githubLogin,
   githubTest: api.githubTest,
   archiveConversation: api.archiveConversation,
+  addPerson: api.addPerson,
+  reissuePerson: api.reissuePerson,
+  setPersonAdmin: api.setPersonAdmin,
+  revokePerson: api.revokePerson,
 };
 
 export function Assistant({
@@ -136,6 +141,7 @@ export function Assistant({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loaded, setLoaded] = useState(false); // nothing is saved before the open one is read
   const [archived, setArchived] = useState(false); // the open one sits under Archived
+  const [issued, setIssued] = useState<{ name: string; token: string } | null>(null); // person action
   const [view, setView] = useState<"chat" | "history">("chat");
   const [historyTick, setHistoryTick] = useState(0);
   const [harness, setHarness] = useState(() => loadHarness(storage));
@@ -388,7 +394,8 @@ export function Assistant({
     if (!a) return;
     setState(mi, ai, "applying");
     try {
-      const r = await applyAction(a, deps, input);
+      const { issuedToken, ...r } = await applyAction(a, deps, input);
+      if (issuedToken) setIssued(issuedToken); // shown once in a popup; never on the card or in history
       if (r.changed === "settings") onSettingsChanged();
       if (r.changed === "pipelines" && r.pipeline) {
         editorLink.notifyChanged(r.pipeline);
@@ -413,6 +420,7 @@ export function Assistant({
   return (
     <div className="assistant">
       <PanelHeader name="assistant" side="right" label="Chat" />
+      {issued && <TokenDialog name={issued.name} token={issued.token} onClose={() => setIssued(null)} />}
       {adding && (
         <AddHarnessDialog
           presets={types?.ai?.presets ?? []}

@@ -78,6 +78,8 @@ LIVE = Live(
         {"id": "c-active1", "title": "Build a pipeline", "updated_at": 0, "archived": False},
         {"id": "c-old0001", "title": "Old chat", "updated_at": 0, "archived": True},
     ],
+    me={"kind": "local", "name": "huu", "admin": True},
+    people=[{"name": "bob", "admin": False}],
 )
 
 # (action, expected issue substring or "" for valid)
@@ -199,6 +201,15 @@ CASES: list[tuple[dict[str, Any], str]] = [
     ({"type": "conversation", "op": "archive", "id": "c-old0001"}, "already archived"),
     ({"type": "conversation", "op": "archive", "id": "c-ghost01"}, "no conversation"),
     ({"type": "conversation", "op": "delete", "id": "c-active1"}, "op must be"),
+    ({"type": "person", "op": "add", "name": "carol", "admin": True}, ""),
+    ({"type": "person", "op": "add", "name": "BOB"}, "already a person"),
+    ({"type": "person", "op": "add", "name": "shared-token"}, "reserved"),
+    ({"type": "person", "op": "add", "name": "a b"}, "no spaces"),
+    ({"type": "person", "op": "token", "name": "bob"}, ""),
+    ({"type": "person", "op": "revoke", "name": "ghost"}, "no person"),
+    ({"type": "person", "op": "admin", "name": "bob", "admin": True}, ""),
+    ({"type": "person", "op": "admin", "name": "bob"}, "true or false"),
+    ({"type": "person", "op": "rename", "name": "bob"}, "op must be"),
     ({"type": "review", "run": "r1"}, ""),
     ({"type": "review", "run": "r 1"}, "bad run id"),
     ({"type": "probe", "review": "v0123456789ab", "index": 0}, ""),
@@ -311,3 +322,15 @@ def test_chat_api_sends_live_state(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     # a gate that isn't waiting gets one repair round; the agent's answer without it stands
     assert len(seen) == 2 and "no gate 'g' waiting in run r9" in seen[1].prompt
     assert r.json()["actions"][0]["issues"]
+
+
+def test_people_actions_need_an_admin(tmp_path: Path) -> None:
+    """A non-admin chatting can't propose people changes, and doesn't see PEOPLE."""
+    from dataclasses import replace
+
+    live = replace(LIVE, me={"kind": "person", "name": "kim", "admin": False}, people=None)
+    [out] = check_actions([{"type": "person", "op": "add", "name": "x"}], tmp_path, None, CFG, live)
+    assert "only an admin" in out["issues"][0]
+    text = live_text(live)
+    assert "You are talking with kim (not an admin" in text and "PEOPLE" not in text
+    assert "PEOPLE (Settings > People" in live_text(LIVE) and "bob" in live_text(LIVE)

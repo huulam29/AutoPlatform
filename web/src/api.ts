@@ -4,6 +4,7 @@
 import type { ChatMessage, ChatReply } from "./lib/assistant";
 import type { ConversationSummary } from "./lib/conversations";
 import type { GithubLogin, GithubSetup, GithubTest } from "./lib/github";
+import type { Identity, Person } from "./lib/people";
 import type { GithubStatus, TriageRecord } from "./lib/triage";
 import type { Adoption, Lesson, LessonStatus, Probe, ReviewConfig, ReviewRecord } from "./lib/review";
 import type {
@@ -74,11 +75,18 @@ function authNeeded(): void {
 }
 
 /** Ask the engine whether `candidate` is right (or no token is needed); store it only then. */
-export async function checkToken(candidate?: string): Promise<{ token_required: boolean; ok: boolean }> {
+export interface AuthCheck {
+  token_required: boolean;
+  ok: boolean;
+  /** who this token is (spec 007): a person, the shared token, or the local user */
+  identity?: Identity | null;
+}
+
+export async function checkToken(candidate?: string): Promise<AuthCheck> {
   const t = candidate === undefined ? token() : candidate.trim();
   const res = await fetch("/api/auth/check", { headers: t ? { Authorization: `Bearer ${t}` } : {} });
   if (!res.ok) throw new ApiError(res.status, res.statusText, null);
-  const r = (await res.json()) as { token_required: boolean; ok: boolean };
+  const r = (await res.json()) as AuthCheck;
   if (r.ok && candidate !== undefined && r.token_required) setToken(candidate);
   return r;
 }
@@ -454,6 +462,15 @@ export const api = {
   /** agentline's own problems (crash reports, infrastructure verdicts): not on Problems. */
   appReports: () => call<{ reports: TriageRecord[]; github: GithubStatus }>("GET", "/app-reports"),
   deleteAppReport: (id: string) => call<{ deleted: string }>("DELETE", `/app-reports/${encodeURIComponent(id)}`),
+  // People with their own API token (api/people.py, spec 007); a token only when issued
+  people: () => call<{ people: Person[]; me: Identity }>("GET", "/people"),
+  addPerson: (name: string, admin: boolean) =>
+    call<{ person: Person; token: string }>("POST", "/people", { name, admin }),
+  reissuePerson: (name: string) =>
+    call<{ person: Person; token: string }>("POST", `/people/${encodeURIComponent(name)}/token`),
+  setPersonAdmin: (name: string, admin: boolean) =>
+    call<{ person: Person }>("PUT", `/people/${encodeURIComponent(name)}/admin`, { admin }),
+  revokePerson: (name: string) => call<{ revoked: string }>("DELETE", `/people/${encodeURIComponent(name)}`),
   // GitHub for reports (api/github.py): never returns a token
   github: () => call<GithubSetup>("GET", "/github"),
   githubSave: (body: { repo?: string; auto?: boolean }) => call<GithubSetup>("PUT", "/github", body),

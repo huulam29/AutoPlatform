@@ -7,7 +7,8 @@ import { ADD_HARNESS, BUILTIN_HARNESS, chatModelOptions, modelAfterHarnessChange
 import { AddHarnessDialog, AddHarnessOption } from "./AddHarness";
 import { OPEN_SETUP_EVENT } from "../lib/setup";
 import { isMacApp, nativeCall, type AppInfo } from "../lib/native";
-import { AUTH_NEEDED_EVENT, type AppInfoApi, clearToken, hasToken } from "../api";
+import { AUTH_NEEDED_EVENT, type AppInfoApi, checkToken, clearToken, hasToken } from "../api";
+import { identityLabel, type Identity } from "../lib/people";
 import { CopyPath } from "./CopyPath";
 import { FolderPicker } from "./FolderPicker";
 import { restartEngine } from "../lib/engine";
@@ -873,7 +874,11 @@ function BrowserEngine({ info, onChanged }: { info: AppInfoApi; onChanged: () =>
   const [path, setPath] = useState(info.pipelines_dir);
   const [picking, setPicking] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [who, setWho] = useState<Identity | null>(null);
   useEffect(() => setPath(info.pipelines_dir), [info.pipelines_dir]);
+  useEffect(() => {
+    if (hasToken()) void checkToken().then((r) => setWho(r.identity ?? null), () => setWho(null));
+  }, []);
   const save = async (p: string) => {
     try {
       const r = await api.setPipelinesDir(p);
@@ -931,7 +936,7 @@ function BrowserEngine({ info, onChanged }: { info: AppInfoApi; onChanged: () =>
         <>
           <h3>Sign-in</h3>
           <p className="small">
-            This browser is signed in with the engine's API token.{" "}
+            This browser is signed in{who ? ` as ${identityLabel(who)}` : " with an API token"}.{" "}
             <button
               type="button"
               onClick={() => {

@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-03
 
-**Status**: Draft
+**Status**: Approved (user, 2026-11-03)
 
 **Input**: User description: "Audit rows for actions taken through the web API name the engine's OS
 user, not the person. Now that remote browsers sign in with a token (phase 54), every remote
@@ -29,6 +29,7 @@ records, who did what.
 - Q: How does the API know who is acting? → A: A token per person, created in Settings, shown once; only its hash is kept. No external identity provider, no typed-in names.
 - Q: Who may add and revoke people? → A: The person at the engine's machine (a loopback request with no token) and people marked admin. Others see only themselves.
 - Q: What happens to the shared `AGENTLINE_API_TOKEN`? → A: It keeps working; actions taken with it are recorded as `shared-token`.
+- Q (found while building): the Mac app always sends the shared token over loopback, so its approvals would all read `shared-token`. → A: the shared token from the engine's own machine (loopback, no proxy headers) is the local user; from anywhere else it is `shared-token`. This keeps decision (4) "loopback stays the local OS user".
 - Q: Which branch? → A: Built on phase 54 (the browser sign-in screen), so the sign-in screen takes a personal token too.
 
 ## User Scenarios & Testing *(mandatory)*
@@ -152,8 +153,8 @@ audit trail prove nothing.
 - **FR-002**: People and their token hashes MUST live in the engine's private home folder
   (owner-only, written atomically), never in `agentline.toml`, the repository, the ledger or logs.
 - **FR-003**: Every API request MUST be resolved to an identity: a person (their token), the shared
-  token (`shared-token`), or the local user (loopback with no token). A token that matches none is
-  refused as today.
+  token (`shared-token`; the local user when it comes from the engine's own machine), or the local
+  user (no token, no shared token set). A token that matches none is refused.
 - **FR-004**: Every audit row written because of an API request (approve, reject, retry, run-chat
   card apply, and any later audited route) MUST name the request's identity.
 - **FR-005**: Token comparison MUST be constant-time, and a revoked or reissued token MUST be

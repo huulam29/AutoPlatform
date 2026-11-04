@@ -89,7 +89,10 @@ ACTION_TYPES = (
     "pipeline_lesson",  # add a lesson to a pipeline's lesson library
     # the Chat's own history (agentline.conversations; Chat panel > History)
     "conversation",  # archive or unarchive a past conversation
+    # people with their own API token (agentline.people, Settings > People; spec 007)
+    "person",  # add | token | admin | revoke; Studio shows a new token, never the Chat
 )
+PERSON_OPS = ("add", "token", "admin", "revoke")
 NOTIFY_KEYS = ("gates", "failures", "done", "questions", "reviews")
 CHAT_APP_OPS = ("pair", "test", "unlink")
 ENGINE_OPS = ("restart", "choose_folder", "reveal", "export_reports")
@@ -251,7 +254,9 @@ Reply with ONE JSON object and nothing else (no prose around it, no code fence):
      "evidence": "...", "confidence": "high" | "medium" | "low"},
     {"type": "github", "op": "save" | "login" | "test", "repo": "owner/name (save)",
      "auto": false (save: create issues without asking)},
-    {"type": "conversation", "op": "archive" | "unarchive", "id": "<CONVERSATIONS id>"}
+    {"type": "conversation", "op": "archive" | "unarchive", "id": "<CONVERSATIONS id>"},
+    {"type": "person", "op": "add" | "token" | "admin" | "revoke", "name": "<PEOPLE name>",
+     "admin": false (add, admin)}
   ]
 }
 Every action may carry "why". "Pipeline file name" is the path without .yaml (PIPELINES ON
@@ -640,6 +645,8 @@ class Live:
     lessons: dict[str, str] = field(default_factory=dict)  # pipeline -> its lesson library
     github: dict[str, Any] | None = None  # GitHub reporting setup (github_setup.status)
     conversations: list[dict[str, Any]] | None = None  # the Chat's past conversations
+    me: dict[str, Any] | None = None  # who is chatting: {kind, name, admin} (api.identity)
+    people: list[dict[str, Any]] | None = None  # {name, admin}; only for an admin `me`
 
 
 def gather_live(
@@ -648,8 +655,10 @@ def gather_live(
     issues: Any = None,
     incidents: Any = None,
     pipeline: str | None = None,
+    me: dict[str, Any] | None = None,
 ) -> Live:
-    """LIVE STATE for a turn. Each part is best effort: one that fails is left unknown."""
+    """LIVE STATE for a turn. Each part is best effort: one that fails is left unknown.
+    `me` is the request's identity: people are listed only for an admin (never tokens)."""
     import contextlib
     import os
 
@@ -657,6 +666,13 @@ def gather_live(
     from agentline.secrets import read_secrets
 
     live = Live()
+    if me is not None:
+        live.me = me
+        if me.get("admin"):
+            with contextlib.suppress(Exception):
+                from agentline.people import PeopleStore
+
+                live.people = [{"name": p.name, "admin": p.admin} for p in PeopleStore().list()]
     if app is not None:
         with contextlib.suppress(Exception):
             live.flows = list(app.flow_names())
@@ -762,6 +778,15 @@ def _review_live(r: dict[str, Any]) -> dict[str, Any]:
 
 def live_text(live: Live) -> str:
     lines = []
+    if live.me is not None:
+        role = "admin" if live.me.get("admin") else "not an admin: can't manage people"
+        lines.append(f"You are talking with {live.me.get('name')} ({role}).")
+    if live.people is not None:
+        lines.append(
+            "PEOPLE (Settings > People; each signs in with their own token): "
+            + (", ".join(p["name"] + (" (admin)" if p["admin"] else "") for p in live.people)
+               or "none")
+        )  # fmt: skip
     if live.flows is not None:
         shown = [f"{f} ({live.starts[f]})" if f in live.starts else f for f in live.flows]
         lines.append("LOADED pipelines (start_run, with their start input): "
@@ -1156,6 +1181,30 @@ def _check_one(a: dict[str, Any], root: Path, cfg: Config | None, live: Live) ->
             if bool(c.get("archived")) == (a["op"] == "archive"):
                 return [f"conversation {cid!r} is already {a['op']}d"]
         return []
+    if kind == "person":
+        from agentline.people import check_person_name
+
+        op, name = a.get("op"), str(a.get("name") or "")
+        if op not in PERSON_OPS:
+            return [f"op must be one of {', '.join(PERSON_OPS)}"]
+        if live.me is not None and not live.me.get("admin"):
+            return ["only an admin can manage people"]
+        if op == "add":
+            try:
+                check_person_name(name)
+            except ValidationError as e:
+                return [str(e)]
+            if live.people is not None and any(
+                p["name"].lower() == name.lower() for p in live.people
+            ):
+                return [f"{name!r} is already a person here (see PEOPLE)"]
+        elif live.people is not None and not any(
+            p["name"].lower() == name.lower() for p in live.people
+        ):
+            return [f"no person {name!r} (see PEOPLE)"]
+        if op == "admin" and not isinstance(a.get("admin"), bool):
+            return ["admin must be true or false"]
+        return []
     if kind == "budget":
         v = a.get("monthly_usd")
         ok = v is None or (isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0)
@@ -1242,6 +1291,11 @@ def title(a: dict[str, Any]) -> str:
         "probe": f"probe proposal {a.get('index')} of review {a.get('review')}",
         "pipeline_lesson": f"add a lesson for {a.get('node')} to {a.get('pipeline')}",
         "conversation": f"{a.get('op')} the conversation {a.get('id')}",
+        "person": {
+            "add": f"add {a.get('name')}" + (" as an admin" if a.get("admin") else ""),
+            "token": f"issue a new token for {a.get('name')}",
+            "admin": f"{'make' if a.get('admin') else 'unmake'} {a.get('name')} admin",
+        }.get(str(a.get("op")), f"revoke {a.get('name')}"),
         "github": {"login": "sign in with GitHub", "test": "test the GitHub setup"}.get(
             str(a.get("op")), f"report to GitHub repo {a.get('repo') or '(unchanged)'}"
         ),

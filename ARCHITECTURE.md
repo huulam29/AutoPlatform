@@ -609,6 +609,7 @@ expects, and nothing else from the host env leaks. The `llm` runner calls OpenAI
 | 87 | Browsing the engine machine's folders and setting the pipelines folder follow the API's token rule (local, or with the token); Show in folder is local only | user | Phase 54 |
 | 88 | Browser notifications follow the Mac app's rules (each gate once, runs that become done / dead / needs-review after a baseline, new reports) | user | Phase 54 |
 | 89 | Restart from the web is in place (`os.execv`, same arguments and address); `serve` holds one lock per data folder and a start marker for unclean exits; Mac app tests aren't run on a Windows build machine while `macos/` is untouched | plan (restart, marker); user (lock, Mac tests) | Phase 54 |
+| 90 | Named identities (spec 007): one token per person (`agentline users`, Settings > People), shown once, only its SHA-256 kept in `<home>/people.json` (0600, not the ledger, not agentline.toml). Each API request is a person, `shared-token` (the shared `AGENTLINE_API_TOKEN`, still accepted; from the engine's own machine, e.g. the Mac app, it is the local OS user) or, with no shared token set, the local OS user; audit rows written through the API name it. People are managed by the local user, the shared token and people marked admin; others see only themselves. A bearer that matches nobody is refused even on an open engine. Roles beyond people management and chat-link actors are not built | user | Phase 55 |
 
 ## 13. Open questions
 

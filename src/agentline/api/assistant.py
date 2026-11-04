@@ -26,6 +26,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from agentline import assistant, conversations, history
+from agentline.api.identity import identity_of
 from agentline.errors import ValidationError
 
 
@@ -70,7 +71,13 @@ def create_assistant_router(
         """Cancel = the client goes away (the panel's Cancel aborts the request): the agent's
         process group is killed (runners kill on cancellation)."""
         live = await asyncio.to_thread(
-            assistant.gather_live, files, app, issues, incidents, body.pipeline
+            assistant.gather_live,
+            files,
+            app,
+            issues,
+            incidents,
+            body.pipeline,
+            identity_of(request).as_dict(),
         )
         turn = asyncio.ensure_future(
             assistant.converse(

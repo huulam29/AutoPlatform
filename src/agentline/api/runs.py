@@ -24,12 +24,13 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from agentline import __version__, restart
 from agentline.api.editor import PipelineFiles
-from agentline.app import App, default_actor
+from agentline.api.identity import actor_of
+from agentline.app import App
 from agentline.artifacts import artifact_dict
 from agentline.errors import ValidationError
 from agentline.ledger.base import Execution, Run
@@ -254,11 +255,13 @@ def create_runs_router(
             raise HTTPException(404 if str(e).startswith("no run") else 409, str(e)) from None
 
     @router.post("/runs/{run_id}/messages/{message_id}/apply")
-    def apply_card(run_id: str, message_id: int, body: CardBody) -> dict[str, Any]:
+    def apply_card(
+        run_id: str, message_id: int, body: CardBody, request: Request
+    ) -> dict[str, Any]:
         from agentline import runchat as rc
 
         try:
-            who = default_actor()
+            who = actor_of(request)
             card = asyncio.run(
                 rc.apply_card(app, run_id, message_id, body.index, actor=who, dismiss=body.dismiss)
             )
@@ -321,10 +324,10 @@ def create_runs_router(
                 "run": run_id, "flow": found["flow"]}  # fmt: skip
 
     @router.post("/runs/{run_id}/retry")
-    def retry(run_id: str, body: RetryBody) -> dict[str, Any]:
+    def retry(run_id: str, body: RetryBody, request: Request) -> dict[str, Any]:
         try:
             n = asyncio.run(
-                app.retry(run_id, node_id=body.node or None, actor=default_actor(), via="app")
+                app.retry(run_id, node_id=body.node or None, actor=actor_of(request), via="app")
             )
         except ValidationError as e:
             raise HTTPException(404 if str(e).startswith("no run") else 409, str(e)) from None
@@ -352,8 +355,8 @@ def create_runs_router(
                         )
         return sorted(out, key=lambda a: a["waiting_since"] or 0)
 
-    def _decide(run_id: str, body: GateBody, verb: str) -> dict[str, Any]:
-        actor = default_actor()
+    def _decide(run_id: str, body: GateBody, verb: str, request: Request) -> dict[str, Any]:
+        actor = actor_of(request)
         fn = app.approve if verb == "approve" else app.reject
         try:
             gate = asyncio.run(fn(run_id, body.node, actor=actor, comment=body.comment, via="app"))
@@ -365,12 +368,12 @@ def create_runs_router(
         return {"run_id": run_id, "node_id": gate.node_id, "actor": actor}
 
     @router.post("/runs/{run_id}/approve")
-    def approve(run_id: str, body: GateBody) -> dict[str, Any]:
-        return _decide(run_id, body, "approve")
+    def approve(run_id: str, body: GateBody, request: Request) -> dict[str, Any]:
+        return _decide(run_id, body, "approve", request)
 
     @router.post("/runs/{run_id}/reject")
-    def reject(run_id: str, body: GateBody) -> dict[str, Any]:
-        return _decide(run_id, body, "reject")
+    def reject(run_id: str, body: GateBody, request: Request) -> dict[str, Any]:
+        return _decide(run_id, body, "reject", request)
 
     @router.post("/runs")
     def start_run(body: StartBody) -> dict[str, Any]:

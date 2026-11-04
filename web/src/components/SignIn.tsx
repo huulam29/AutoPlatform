@@ -34,12 +34,13 @@ export function SignIn({ onDone }: { onDone: () => void }) {
         <span className="logo">Agentline Studio</span>
         <h2 id="signin-title">Sign in to this engine</h2>
         <p className="help">
-          This engine is reachable from other machines, so it asks for its API token. On the engine's machine it is{" "}
-          <code>AGENTLINE_API_TOKEN</code> in the secrets file (<code>~/.agentline/secrets.env</code>) or in the
-          environment that started <code>agentline serve</code>.
+          This engine is reachable from other machines, so it asks for a token. Use your own token (an admin makes one
+          in Settings &gt; People, or <code>agentline users add &lt;name&gt;</code>), so what you approve is recorded under
+          your name. The engine's shared token also works: <code>AGENTLINE_API_TOKEN</code> in the secrets file (
+          <code>~/.agentline/secrets.env</code>) on the engine's machine.
         </p>
         <label className="field">
-          <span>API token</span>
+          <span>Your token</span>
           <input
             type="password"
             autoComplete="current-password"

@@ -18,7 +18,8 @@
 | kind | name | admin | when |
 |------|------|-------|------|
 | `local` | `$AGENTLINE_USER` / `$USER` | true | no bearer and no shared token configured |
-| `shared` | `shared-token` | true | bearer equals `AGENTLINE_API_TOKEN` |
+| `shared` | `shared-token` | true | bearer equals `AGENTLINE_API_TOKEN`, from another machine |
+| `local` | `$AGENTLINE_USER` / `$USER` | true | bearer equals `AGENTLINE_API_TOKEN`, from loopback with no proxy headers (the Mac app) |
 | `person` | person's name | person's flag | bearer's SHA-256 matches a person |
 
 ## Audit rows added
