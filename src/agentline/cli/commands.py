@@ -159,8 +159,8 @@ async def _watch_parent(stop: asyncio.Event, interval: float = 1.0) -> None:
     """With AGENTLINE_PARENT_PID (set by the Mac app), stop when that process is gone, so a
     crashed or force-quit app never leaves an engine running on its own."""
     raw = os.environ.get("AGENTLINE_PARENT_PID", "")
-    if not raw.isdigit():
-        return
+    if not raw.isdigit() or sys.platform == "win32":
+        return  # Windows: os.kill(pid, 0) would terminate the parent, not probe it
     parent = int(raw)
     while not stop.is_set():
         try:
