@@ -4,6 +4,7 @@ commit, the branch artifact reaches the next node; missing tools park with a pro
 from __future__ import annotations
 
 import asyncio
+import shutil
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -107,6 +108,8 @@ def test_local_workspace_shell_runner_end_to_end(make_app: Any, tmp_path: Path) 
 
 
 def test_missing_tool_parks_with_image_proposal(make_app: Any) -> None:
+    if shutil.which("psql"):  # installed (CI runners have it, with no server): nothing to test
+        pytest.skip("psql is installed")
     source = PIPELINE.replace(
         """cmd: >-
         cat > prompt.txt""",
@@ -117,8 +120,6 @@ def test_missing_tool_parks_with_image_proposal(make_app: Any) -> None:
     sub = app.submit_sync("local-impl", {"ticket": "PROJ-8"})
     drain(app)
     (ex,) = [x for x in app.executions(sub.run_id) if x.node_id == "implement"]
-    if ex.status == "done":  # psql is installed on this machine; nothing to test
-        pytest.skip("psql is installed")
     assert ex.status == "needs-review" and ex.reason == "missing_tools"
     assert ex.detail["missing_tools"] == ["psql"]
     assert ex.detail["image_proposal"]["add_apt"] == ["postgresql-client"]
