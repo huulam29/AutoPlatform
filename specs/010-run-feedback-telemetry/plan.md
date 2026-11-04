@@ -47,7 +47,7 @@ metrics; insights capped at 2,000 runs per window.
 | V Least privilege | Unchanged. |
 | VI Tested | Tests per module, API, CLI, chat link, Chat parity, web. `AGENTLINE_TELEMETRY=off` in `tests/conftest.py`; review loop stays off in tests (`AGENTLINE_REVIEW=off`), its feedback pass is tested by calling `find_runs` / `review` with a fake harness. |
 | VII Honest scope | docs/phase-58.md says telemetry was tested against a fake collector only, and that "tool calls" are runner turns. |
-| Workflow | Chat actions for every new GUI action; ARCHITECTURE decision log entries 86-88 for the three user decisions. |
+| Workflow | Chat actions for every new GUI action; ARCHITECTURE decision log entries 86-88 for the three user decisions (proposed in docs/phase-58.md: a parallel branch leaves ARCHITECTURE.md and CLAUDE.md to the integrator). |
 
 No exceptions needed.
 
@@ -102,7 +102,7 @@ web/src/components/RunFeedback.tsx, RunMetrics.tsx, RunReport.tsx, Insights.tsx,
 web/src/components/TelemetrySetting.tsx       new
 web/src/components/RunView.tsx, App.tsx, SettingsExtra.tsx (one mount line each)
 web/src/lib/insights.ts (+ test), lib/assistant.ts (applyAction / actionTitle)
-docs/phase-58.md, docs/phase-25.md (Chat parity rows), ARCHITECTURE.md §12 (86-88)
+docs/phase-58.md (with ARCHITECTURE §12 86-88 for the integrator), docs/phase-25.md (Chat parity rows)
 ```
 
 **Conflicts with PR #3** (`App.tsx`, `SettingsExtra.tsx`, `api.ts`): additions only, in new

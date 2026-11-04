@@ -4,7 +4,7 @@
 
 **Created**: 2026-11-03
 
-**Status**: Draft
+**Status**: Implemented (approved 2026-11-04)
 
 **Input**: User description: "I need to collect a lot of feedback when the app pipeline is running
 (the application) to help improve the pipeline. Add logs/reports/telemetry,... to support it."

@@ -113,6 +113,9 @@ The web Chat applies each card through the same API as its GUI page (`lib/assist
 | | probe a review's pipeline edit (run view: Probe, Probe again) | `probe` |
 | | add a lesson to the pipeline's lesson library (review card) | `pipeline_lesson` |
 | Chat history (phase 48) | archive / unarchive a past conversation (Chat > History) | `conversation` op archive / unarchive (ids from LIVE STATE CONVERSATIONS) |
+| Feedback (phase 58) | rate a run or a node's output 👍 / 👎 with a comment (Run view) | `feedback` (rating up / down / none, comment, node) |
+| | open a run's report (Run view: Report) | `run_report` (format md / json; the web opens the Run view's dialog) |
+| | telemetry: collector, headers secret, on / off, Test (Settings > General) | `telemetry` (enabled, endpoint, headers_secret, service_name; op test) |
 
 Read-only views (Logs, run journals, costs report, MCP and model tests) and Chat > History's
 open / New chat / search (they only change what the panel shows) have no card: the agent
