@@ -89,6 +89,10 @@ ACTION_TYPES = (
     "pipeline_lesson",  # add a lesson to a pipeline's lesson library
     # the Chat's own history (agentline.conversations; Chat panel > History)
     "conversation",  # archive or unarchive a past conversation
+    # people's feedback, reports and telemetry (phase 58; Run view, Settings > General)
+    "feedback",  # rate a run or a node's output, with a comment (Run view > Feedback)
+    "run_report",  # open a run's report (Run view > Report)
+    "telemetry",  # OpenTelemetry export: on / off, collector, headers secret, test
 )
 NOTIFY_KEYS = ("gates", "failures", "done", "questions", "reviews")
 CHAT_APP_OPS = ("pair", "test", "unlink")
@@ -248,7 +252,13 @@ Reply with ONE JSON object and nothing else (no prose around it, no code fence):
      "evidence": "...", "confidence": "high" | "medium" | "low"},
     {"type": "github", "op": "save" | "login" | "test", "repo": "owner/name (save)",
      "auto": false (save: create issues without asking)},
-    {"type": "conversation", "op": "archive" | "unarchive", "id": "<CONVERSATIONS id>"}
+    {"type": "conversation", "op": "archive" | "unarchive", "id": "<CONVERSATIONS id>"},
+    {"type": "feedback", "run": "<run id>", "rating": "up" | "down" | "none",
+     "comment": "<what was good or wrong, the user's words>", "node": "<node id, optional>"},
+    {"type": "run_report", "run": "<run id>", "format": "md" | "json"},
+    {"type": "telemetry", "enabled": true, "endpoint": "http://localhost:4318",
+     "headers_secret": "<secret NAME holding k=v headers, optional>"} or
+     {"type": "telemetry", "op": "test"}
   ]
 }
 Every action may carry "why". "Pipeline file name" is the path without .yaml (PIPELINES ON
@@ -1146,6 +1156,39 @@ def _check_one(a: dict[str, Any], root: Path, cfg: Config | None, live: Live) ->
             if bool(c.get("archived")) == (a["op"] == "archive"):
                 return [f"conversation {cid!r} is already {a['op']}d"]
         return []
+    if kind == "feedback":
+        from agentline.feedback import MAX_COMMENT, RATINGS
+
+        out = [] if _RUN.match(str(a.get("run") or "")) else ["bad run id"]
+        if a.get("rating") not in RATINGS:
+            out.append("rating must be up, down or none")
+        if len(str(a.get("comment") or "")) > MAX_COMMENT:
+            out.append(f"a comment is at most {MAX_COMMENT} characters")
+        if a.get("node") is not None and not re.fullmatch(r"[A-Za-z0-9_.\-]+", str(a["node"])):
+            out.append("bad node id")
+        return out  # older runs aren't in LIVE STATE: the API says if one is missing
+    if kind == "run_report":
+        a.setdefault("format", "md")
+        out = [] if _RUN.match(str(a.get("run") or "")) else ["bad run id"]
+        return out + ([] if a["format"] in ("md", "json") else ["format must be md or json"])
+    if kind == "telemetry":
+        from agentline import telemetry
+
+        if a.get("op", "save") not in ("save", "test"):
+            return ["op must be save or test"]
+        if a.get("op") == "test":
+            return []
+        keys = ("enabled", "endpoint", "service_name", "headers_secret")
+        if not any(k in a for k in keys):
+            return ["give enabled, endpoint, service_name or headers_secret"]
+        if "enabled" in a and not isinstance(a["enabled"], bool):
+            return ["enabled must be true or false"]
+        cur = telemetry.config(cfg)
+        try:
+            telemetry.check({**cur, **{k: a[k] for k in keys if k in a}})
+        except ValidationError as e:
+            return [str(e)]
+        return []
     if kind == "budget":
         v = a.get("monthly_usd")
         ok = v is None or (isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0)
@@ -1230,6 +1273,18 @@ def title(a: dict[str, Any]) -> str:
         "probe": f"probe proposal {a.get('index')} of review {a.get('review')}",
         "pipeline_lesson": f"add a lesson for {a.get('node')} to {a.get('pipeline')}",
         "conversation": f"{a.get('op')} the conversation {a.get('id')}",
+        "feedback": (
+            f"rate {'node ' + str(a.get('node')) + ' of ' if a.get('node') else ''}run"
+            f" {a.get('run')} {({'up': '👍', 'down': '👎'}).get(str(a.get('rating')), 'none')}"
+        ),
+        "run_report": f"open the report of run {a.get('run')}",
+        "telemetry": "test telemetry"
+        if a.get("op") == "test"
+        else (
+            "turn telemetry " + ("on" if a.get("enabled") else "off")
+            if "enabled" in a
+            else "change telemetry settings"
+        ),
         "github": {"login": "sign in with GitHub", "test": "test the GitHub setup"}.get(
             str(a.get("op")), f"report to GitHub repo {a.get('repo') or '(unchanged)'}"
         ),

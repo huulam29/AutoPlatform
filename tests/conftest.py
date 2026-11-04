@@ -10,6 +10,7 @@ os.environ.setdefault("AGENTLINE_TRIAGE", "off")
 os.environ.setdefault("AGENTLINE_REVIEW", "off")  # run reviews call the Chat agent too
 os.environ.setdefault("AGENTLINE_RUNCHAT", "off")  # and so do chat start nodes' answers
 os.environ.setdefault("AGENTLINE_ADVISOR", "off")  # the effect advisor too
+os.environ.setdefault("AGENTLINE_TELEMETRY", "off")  # never send OpenTelemetry anywhere
 
 
 @pytest.fixture(autouse=True)
