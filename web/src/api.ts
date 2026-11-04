@@ -163,8 +163,10 @@ export interface ChatPlatform {
   token_env: string;
   token_set: boolean;
   bot: string | null;
-  linked: { chat_id: string | number; user_id?: string | number; username?: string; linked_at?: number } | null;
-  pairing: { code: string; expires: number } | null;
+  linked: { chat_id: string | number; user_id?: string | number; username?: string; linked_at?: number; person?: string } | null;
+  /** Who the link's approvals and retries are audited as: a person, or `<platform>:@<user>` (spec 011). */
+  acts_as?: string | null;
+  pairing: { code: string; expires: number; person?: string } | null;
   setup: string;
 }
 

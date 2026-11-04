@@ -2,8 +2,10 @@
 
 GET    /chat                  {telegram, slack, discord, notify, platforms}; each platform:
                               {title, keys: [{name, set}], token_env, token_set, bot, linked,
-                              pairing, setup}
-POST   /chat/{platform}/pair         a 6-digit code (10 minutes) to send the bot (+ t.me link)
+                              acts_as, pairing, setup}; `acts_as` is who the link's actions
+                              are audited as (a person or `<platform>:@<user>`, spec 011)
+POST   /chat/{platform}/pair         a 6-digit code (10 minutes) to send the bot (+ t.me link);
+                                     asked with a person's token, the link acts as them
 POST   /chat/{platform}/test         send a test message to the linked chat
 DELETE /chat/{platform}              unlink
 PUT    /chat/notify                  {gates?, failures?, done?, questions?, reviews?} (shared)
@@ -21,13 +23,16 @@ import os
 import time
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from agentline import chat_instructions
+from agentline.api.identity import identity_of
 from agentline.chatlink import state
 from agentline.chatlink.platforms import PLATFORMS, whoami
+from agentline.chatlink.service import link_actor
 from agentline.errors import ValidationError
+from agentline.people import PeopleStore
 
 
 class InstructionsBody(BaseModel):
@@ -55,6 +60,7 @@ class NotifyBody(BaseModel):
 def create_chat_router() -> APIRouter:
     router = APIRouter()
     bots: dict[str, tuple[str, str | None]] = {}  # platform -> (keys fingerprint, bot name)
+    people = PeopleStore()
 
     def platform(name: str) -> Any:
         p = PLATFORMS.get(name)
@@ -80,13 +86,15 @@ def create_chat_router() -> APIRouter:
         d = st.read()
         pair = d.get("pair") or {}
         pending = pair if pair and float(pair.get("expires") or 0) > time.time() else None
+        linked = st.linked()
         return {
             "title": p.title,
             "keys": [{"name": k, "set": bool(os.environ.get(k))} for k in p.keys],
             "token_env": p.keys[0],
             "token_set": p.keys_set(),
             "bot": await bot_name(name),
-            "linked": st.linked(),
+            "linked": linked,
+            "acts_as": link_actor(name, linked, people) if linked else None,
             "pairing": pending,
             "setup": p.setup,
         }
@@ -127,7 +135,7 @@ def create_chat_router() -> APIRouter:
         return await view()
 
     @router.post("/chat/{name}/pair")
-    async def pair(name: str) -> dict[str, Any]:
+    async def pair(name: str, request: Request) -> dict[str, Any]:
         p = platform(name)
         if not p.keys_set():
             msg = f"set {', '.join(p.keys)} on its card under Settings > Chat apps first"
@@ -135,7 +143,8 @@ def create_chat_router() -> APIRouter:
         bot = await bot_name(name)
         if bot is None:
             raise HTTPException(502, f"{p.title} didn't accept the bot token (check it)")
-        code = state.ChatState(name).new_pair_code()
+        who = identity_of(request)  # a person's code links a chat that acts as them (spec 011)
+        code = state.ChatState(name).new_pair_code(who.name if who.kind == "person" else None)
         link = f"https://t.me/{bot}?start={code}" if name == "telegram" else None
         return {**(await view()), "platform": name, "code": code, "link": link}
 

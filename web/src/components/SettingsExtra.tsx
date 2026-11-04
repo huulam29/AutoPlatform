@@ -192,6 +192,12 @@ function PlatformCard({
           <p>
             Bot <strong>{p.bot ? `@${p.bot}` : "?"}</strong> is linked to{" "}
             <strong>{p.linked.username ? `@${p.linked.username}` : `chat ${p.linked.chat_id}`}</strong>.
+            {p.acts_as ? (
+              <>
+                {" "}
+                Approvals and retries from it are recorded as <strong>{p.acts_as}</strong>.
+              </>
+            ) : null}
           </p>
           <div className="row">
             <button type="button" disabled={busy} onClick={() => void run(() => api.chatTest(name))}>

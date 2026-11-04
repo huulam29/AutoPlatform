@@ -1,7 +1,8 @@
 """The chat link's local state: `$AGENTLINE_HOME/chatlink.json` (0600).
 
-{"telegram": {"chat_id", "user_id", "username", "linked_at"} | null,
- "pair": {"code", "expires"},            a pending pairing code (10 minutes)
+{"telegram": {"chat_id", "user_id", "username", "linked_at", "person"?} | null,
+ "pair": {"code", "expires", "person"?}, a pending pairing code (10 minutes); `person` is
+                                         who asked for it (spec 011)
  "offset": <next update id>,
  "notify": {"gates", "failures", "done", "questions", "reviews"},
  "sent": {"gate:<exec id>": message_id, "run:<id>:<status>": message_id, ...},
@@ -104,10 +105,15 @@ class ChatState:
             data = ChatState("telegram").read() if self.platform != "telegram" else self.read()
         return {**DEFAULT_NOTIFY, **{k: bool(v) for k, v in (data.get("notify") or {}).items()}}
 
-    def new_pair_code(self) -> str:
+    def new_pair_code(self, person: str | None = None) -> str:
+        """A fresh pairing code. `person`: the named person (spec 007) who asked for it; the link
+        it pairs then acts as them in audit rows (spec 011)."""
         code = f"{secrets.randbelow(10**6):06d}"
+        pair: dict[str, Any] = {"code": code, "expires": time.time() + PAIR_SECONDS}
+        if person:
+            pair["person"] = person
         with self.edit() as d:
-            d["pair"] = {"code": code, "expires": time.time() + PAIR_SECONDS}
+            d["pair"] = pair
         return code
 
     def linked(self) -> dict[str, Any] | None:
