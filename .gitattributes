@@ -1,2 +1,6 @@
-# sh can't run a CRLF script, and Windows clones default to autocrlf
-.githooks/* text eol=lf
+# LF everywhere, also in Windows checkouts (core.autocrlf would otherwise turn text files to
+# CRLF: sh can't run CRLF scripts, and the editor API round-trips pipeline files byte for byte)
+* text=auto eol=lf
+# Windows batch files need CRLF
+*.cmd text eol=crlf
+*.bat text eol=crlf

@@ -106,7 +106,7 @@ class _JsonStore:
 
     def get(self, rid: str) -> dict[str, Any] | None:
         try:
-            return dict(json.loads(self._path(rid).read_text()))
+            return dict(json.loads(self._path(rid).read_text(encoding="utf-8")))
         except (KeyError, OSError, ValueError):
             return None
 
@@ -114,7 +114,7 @@ class _JsonStore:
         self.root.mkdir(parents=True, exist_ok=True)
         rec["updated_at"] = time.time()
         fd, tmp = tempfile.mkstemp(dir=self.root, prefix=".rec.", suffix=".tmp")
-        with os.fdopen(fd, "w") as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(rec, f, indent=2, default=str)
         os.replace(tmp, self._path(str(rec["id"])))
         return rec
@@ -125,7 +125,7 @@ class _JsonStore:
         out = []
         for p in self.root.glob(self.glob):
             with contextlib.suppress(OSError, ValueError):
-                rec = json.loads(p.read_text())
+                rec = json.loads(p.read_text(encoding="utf-8"))
                 if isinstance(rec, dict):
                     out.append(rec)
         out.sort(key=lambda r: r.get("created_at", 0), reverse=True)
@@ -148,10 +148,10 @@ class ReviewStore(_JsonStore):
         """When automatic review began in this data folder (set on first use)."""
         p = self.root / "state.json"
         with contextlib.suppress(OSError, ValueError):
-            return float(json.loads(p.read_text())["since"])
+            return float(json.loads(p.read_text(encoding="utf-8"))["since"])
         self.root.mkdir(parents=True, exist_ok=True)
         now = time.time()
-        p.write_text(json.dumps({"since": now}))
+        p.write_text(json.dumps({"since": now}), encoding="utf-8")
         return now
 
     @property
@@ -458,7 +458,7 @@ def _agent_files(path: Path, yaml_text: str) -> list[tuple[str, str]]:
             p = (path.parent / v).resolve()
             if p.is_file() and p.is_relative_to(path.parent.resolve()):
                 with contextlib.suppress(OSError):
-                    out.append((v, p.read_text()[:MAX_FILE]))
+                    out.append((v, p.read_text(encoding="utf-8")[:MAX_FILE]))
                     seen.add(v)
     return out
 
@@ -789,10 +789,10 @@ def _snapshot(files: Any, a: dict[str, Any]) -> dict[str, Any]:
     target = (files.root / str(a["path"])).resolve()
     out: dict[str, Any] = {"yaml": None, "files": {}}
     with contextlib.suppress(OSError):
-        out["yaml"] = target.read_text()
+        out["yaml"] = target.read_text(encoding="utf-8")
     for rel in a.get("files") or {}:
         try:
-            out["files"][rel] = (target.parent / rel).read_text()
+            out["files"][rel] = (target.parent / rel).read_text(encoding="utf-8")
         except OSError:
             out["files"][rel] = None
     return out

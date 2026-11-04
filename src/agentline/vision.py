@@ -144,7 +144,7 @@ def _cache_path(att_id: str) -> Path:
 
 def cached(att_id: str) -> dict[str, Any] | None:
     try:
-        data = json.loads(_cache_path(att_id).read_text())
+        data = json.loads(_cache_path(att_id).read_text(encoding="utf-8"))
         return data if isinstance(data, dict) and data.get("text") else None
     except (OSError, ValueError):
         return None
@@ -162,7 +162,7 @@ def save(att_id: str, text: str, by: str, *, edited: bool = False, cost: float =
     p = _cache_path(att_id)
     p.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=p.parent, prefix=".t-", suffix=".json")
-    with os.fdopen(fd, "w") as f:
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         json.dump(rec, f, indent=2)
     os.replace(tmp, p)
     return rec

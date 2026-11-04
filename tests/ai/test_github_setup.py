@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import stat
 import subprocess
 import threading
 import time
@@ -22,31 +21,40 @@ from agentline.api.server import create_server
 from agentline.config import Config
 from agentline.errors import ValidationError
 from agentline.tomlwrite import set_plain_table
+from tests.fakebin import fake_bin
 
-FAKE_GH = """#!/bin/sh
+FAKE_GH = """
 # a stand-in GitHub CLI: login prints a code, waits for the "browser", then succeeds
-state="$FAKE_GH_STATE"
-case "$1 $2" in
-  "auth token") [ -f "$state" ] && echo gho_fake_cli_token && exit 0; exit 1 ;;
-  "auth status") [ -f "$state" ] || exit 1
-    echo "Logged in to github.com account octo (keyring)"; exit 0 ;;
-  "auth login")
-    read _
-    echo "! One-time code (AB12-CD34) copied to clipboard"
-    echo "Open this URL to continue in your web browser: https://github.com/login/device"
-    while [ ! -f "$state.approve" ]; do sleep 0.05; done
-    touch "$state"; echo "Logged in as octo"; exit 0 ;;
-esac
-exit 2
+import os, sys, time
+state = os.environ["FAKE_GH_STATE"]
+cmd = " ".join(sys.argv[1:3])
+if cmd == "auth token":
+    if os.path.exists(state):
+        print("gho_fake_cli_token")
+        sys.exit(0)
+    sys.exit(1)
+if cmd == "auth status":
+    if not os.path.exists(state):
+        sys.exit(1)
+    print("Logged in to github.com account octo (keyring)")
+    sys.exit(0)
+if cmd == "auth login":
+    sys.stdin.readline()
+    print("! One-time code (AB12-CD34) copied to clipboard", flush=True)
+    url = "https://github.com/login/device"
+    print(f"Open this URL to continue in your web browser: {url}", flush=True)
+    while not os.path.exists(state + ".approve"):
+        time.sleep(0.05)
+    open(state, "w").close()
+    print("Logged in as octo")
+    sys.exit(0)
+sys.exit(2)
 """
 
 
 @pytest.fixture
 def fake_gh(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    gh = tmp_path / "bin" / "gh"
-    gh.parent.mkdir()
-    gh.write_text(FAKE_GH)
-    gh.chmod(gh.stat().st_mode | stat.S_IEXEC)
+    gh = fake_bin(tmp_path / "bin", "gh", code=FAKE_GH)
     state = tmp_path / "gh-state"
     monkeypatch.setenv("FAKE_GH_STATE", str(state))
     monkeypatch.setattr(gs, "gh_path", lambda: str(gh))

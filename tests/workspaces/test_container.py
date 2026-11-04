@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,10 @@ from agentline.runners import ShellRunner
 from agentline.workspaces import ContainerProvider, image_proposal
 
 from .helpers import FakeDocker, ctx, make_remote
+
+pytestmark = pytest.mark.skipif(
+    sys.platform == "win32", reason="container workspaces need a POSIX host (uid mapping, mounts)"
+)
 
 
 @pytest.fixture

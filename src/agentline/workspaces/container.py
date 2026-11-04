@@ -21,11 +21,13 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+import sys
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from agentline.config import Config, RepoConfig
+from agentline.errors import PermanentError
 from agentline.registry import Workspace, WorkspaceSpec
 from agentline.runners.common import GIT_IDENTITY, Executor, base_env, declared_env, run_process
 from agentline.workspaces import git
@@ -152,6 +154,12 @@ class ContainerProvider:
 
     @contextlib.asynccontextmanager
     async def _acquire(self, ctx: StepContext, spec: WorkspaceSpec) -> AsyncIterator[Workspace]:
+        if sys.platform == "win32":
+            # host paths are mounted as `<path>:<path>` and the uid is mapped: POSIX hosts only
+            raise PermanentError(
+                "container workspaces need a Linux or macOS host (run the engine in WSL);"
+                " use `workspace: { type: local }` on Windows"
+            )
         docker = self.docker_bin(spec)
         run = self.executor
         async with checkout(ctx, spec, self.config, self.home) as (repo, wt):

@@ -12,7 +12,6 @@
 from __future__ import annotations
 
 import contextlib
-import fcntl
 import json
 import os
 import secrets
@@ -20,6 +19,8 @@ import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
+
+from agentline.filelock import locked_file
 
 DEFAULT_NOTIFY = {
     "gates": True,
@@ -69,7 +70,7 @@ class ChatState:
 
     def read(self) -> dict[str, Any]:
         try:
-            data = json.loads(self.path.read_text())
+            data = json.loads(self.path.read_text(encoding="utf-8"))
             return data if isinstance(data, dict) else {}
         except (OSError, ValueError):
             return {}
@@ -80,7 +81,7 @@ class ChatState:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(f".{path.name}.tmp")
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w") as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
         os.replace(tmp, path)
 
@@ -89,14 +90,10 @@ class ChatState:
         """Read-modify-write under a lock (the API and the loop both write)."""
         path = self.path
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path.with_name(f".{path.stem}.lock"), "a") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
-            try:
-                data = self.read()
-                yield data
-                self._write(data)
-            finally:
-                fcntl.flock(lock, fcntl.LOCK_UN)
+        with locked_file(path.with_name(f".{path.stem}.lock")):
+            data = self.read()
+            yield data
+            self._write(data)
 
     def notify_prefs(self, data: dict[str, Any] | None = None) -> dict[str, bool]:
         """Shared by every platform (kept in chatlink.json)."""

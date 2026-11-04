@@ -116,7 +116,7 @@ def proposed_table(config: Config, proposal: dict[str, Any]) -> tuple[str, dict[
 def apply_proposal(config: Config, path: Path, proposal: dict[str, Any], pid: str) -> Applied:
     profile, table = proposed_table(config, proposal)
     created = not path.exists()
-    old = "" if created else path.read_text()
+    old = "" if created else path.read_text(encoding="utf-8")
     comment = f"apt += {', '.join(proposal.get('add_apt') or [])} (agentline approve {pid})"
     new = write_images_table(old, profile, table, comment)
     backup = None
@@ -124,7 +124,7 @@ def apply_proposal(config: Config, path: Path, proposal: dict[str, Any], pid: st
         backup = path.with_name(path.name + ".bak")
         shutil.copy2(path, backup)
     tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_text(new)
+    tmp.write_text(new, encoding="utf-8")
     os.replace(tmp, path)
     diff = "".join(
         difflib.unified_diff(

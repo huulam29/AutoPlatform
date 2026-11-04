@@ -270,6 +270,7 @@ def test_live_text_names_everything_the_agent_proposes_against() -> None:
 
 def test_chat_api_sends_live_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))  # Path.home() on Windows
     pipelines = tmp_path / "pipelines"
     pipelines.mkdir()
     (pipelines / "dev.yaml").write_text("version: 1\nname: dev-cycle\nnodes: {}\n")

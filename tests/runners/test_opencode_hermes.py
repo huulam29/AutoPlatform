@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +16,7 @@ from agentline.registry import Limits, RunRequest
 from agentline.runners import HermesRunner, OpenCodeRunner, RunnerError
 from agentline.runners import hermes as hermes_mod
 from agentline.runners import opencode as opencode_mod
+from tests.fakebin import fake_bin
 
 # Prints the event format of the real CLI; the mode is a `mode:<name>` word in the prompt.
 FAKE = r"""
@@ -54,9 +54,7 @@ else:
 def fake(tmp_path: Path, kind: str) -> str:
     script = tmp_path / f"fake_{kind}.py"
     script.write_text(FAKE % kind)
-    wrapper = tmp_path / kind
-    wrapper.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{script}" "$@"\n')
-    wrapper.chmod(0o755)
+    wrapper = fake_bin(tmp_path, kind, script=script)
     return str(wrapper)
 
 

@@ -55,7 +55,7 @@ def _upgrades_path() -> Path:
 
 def _applied() -> list[str]:
     try:
-        data = json.loads(_upgrades_path().read_text())
+        data = json.loads(_upgrades_path().read_text(encoding="utf-8"))
         return [str(x) for x in data] if isinstance(data, list) else []
     except (OSError, ValueError):
         return []
@@ -71,7 +71,7 @@ def read() -> str:
         done = []
     todo = [(uid, line) for uid, line in UPGRADES if uid not in done]
     if todo:
-        text = p.read_text()
+        text = p.read_text(encoding="utf-8")
         new = [line for _, line in todo if line not in text.splitlines()]
         if new:  # with the general rules, before any section (the lessons)
             lines = text.rstrip("\n").split("\n")
@@ -79,8 +79,8 @@ def read() -> str:
             while at > 0 and not lines[at - 1].strip():
                 at -= 1
             write("\n".join([*lines[:at], *new, *lines[at:]]) + "\n")
-        _upgrades_path().write_text(json.dumps(done + [uid for uid, _ in todo]))
-    return p.read_text()
+        _upgrades_path().write_text(json.dumps(done + [uid for uid, _ in todo]), encoding="utf-8")
+    return p.read_text(encoding="utf-8")
 
 
 def write(text: str) -> str:
@@ -89,10 +89,10 @@ def write(text: str) -> str:
     p = path()
     p.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=p.parent, prefix=".chat-instructions.", suffix=".tmp")
-    with os.fdopen(fd, "w") as f:
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(text if text.endswith("\n") or not text else text + "\n")
     os.replace(tmp, p)
-    return p.read_text()
+    return p.read_text(encoding="utf-8")
 
 
 LESSONS = "## Lessons from failed runs"

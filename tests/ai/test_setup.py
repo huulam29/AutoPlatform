@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from agentline import App, SqliteLedger
 from agentline.api.server import create_server
 from agentline.config import Config
+from tests.fakebin import fake_bin
 
 
 @pytest.fixture
@@ -72,8 +73,7 @@ def test_nothing_works_then_a_key_makes_it_ready(
 def test_claude_cli_counts_and_dismiss(c: TestClient, tmp_path: Path) -> None:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    (bin_dir / "claude").write_text("#!/bin/sh\n")
-    (bin_dir / "claude").chmod(0o755)
+    fake_bin(bin_dir, "claude")
     s = c.get("/api/setup").json()
     assert s["ready"] and s["assistant"] == {"harness": "claude-code", "model": None}
     assert next(x for x in s["sources"] if x["id"] == "claude")["available"]

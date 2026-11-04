@@ -17,7 +17,6 @@ Statuses: open -> in_progress -> fixed | wont_fix (any status can move to any ot
 from __future__ import annotations
 
 import contextlib
-import fcntl
 import json
 import os
 import tempfile
@@ -27,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from agentline.errors import ValidationError
+from agentline.filelock import locked_file
 
 STATUSES = ("open", "in_progress", "fixed", "wont_fix")
 CLOSED = ("fixed", "wont_fix")
@@ -59,26 +59,22 @@ class IssueStore:
     @contextlib.contextmanager
     def _locked(self) -> Iterator[None]:
         self.root.mkdir(parents=True, exist_ok=True)
-        with open(self.root / ".lock", "a") as f:
-            fcntl.flock(f, fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                fcntl.flock(f, fcntl.LOCK_UN)
+        with locked_file(self.root / ".lock"):
+            yield
 
     def _path(self, number: int) -> Path:
         return self.root / f"{number}.json"
 
     def _write(self, rec: dict[str, Any]) -> None:
         fd, tmp = tempfile.mkstemp(dir=self.root, prefix=".issue.", suffix=".tmp")
-        with os.fdopen(fd, "w") as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(rec, f, indent=2, default=str)
         os.replace(tmp, self._path(int(rec["number"])))
 
     @staticmethod
     def _read(path: Path) -> dict[str, Any]:
         try:
-            return dict(json.loads(path.read_text()))
+            return dict(json.loads(path.read_text(encoding="utf-8")))
         except (OSError, ValueError):
             return {}
 

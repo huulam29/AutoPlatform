@@ -371,7 +371,7 @@ def _reference() -> str:
         "feature-factory/scripts/gather.py",
     ):
         try:
-            out += [f"# {path}", (root / path).read_text()]
+            out += [f"# {path}", (root / path).read_text(encoding="utf-8")]
         except OSError:
             continue
     return "\n".join(out)
@@ -599,9 +599,9 @@ def check_pipeline(a: dict[str, Any], root: Path, registry: Any, cfg: Config | N
                     shutil.copytree(target_dir / sub, scratch / sub, dirs_exist_ok=True)
         for rel, text in files.items():
             (scratch / rel).parent.mkdir(parents=True, exist_ok=True)
-            (scratch / rel).write_text(text)
+            (scratch / rel).write_text(text, encoding="utf-8")
         p = scratch / Path(path).name
-        p.write_text(yaml_text)
+        p.write_text(yaml_text, encoding="utf-8")
         try:
             spec = parse_spec(yaml_text, path=p, base_dir=scratch)
         except SpecError as e:
@@ -1445,7 +1445,7 @@ async def converse(
         path = files.resolve(pipeline)
         text = source
         if text is None and path.exists():
-            text = path.read_text()
+            text = path.read_text(encoding="utf-8")
         if text is not None:
             current = (files.name_of(path) + ".yaml", text)
     context = build_context(
@@ -1589,7 +1589,7 @@ def apply_setting(files: Any, section: str, name: str, body: dict[str, Any]) -> 
     path = (
         Path(cfg.path) if cfg.path else Path(os.environ.get("AGENTLINE_CONFIG") or "agentline.toml")
     )
-    text = path.read_text() if path.exists() else ""
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
     table = {k: v for k, v in body.items() if v not in (None, "", [], {})}
     new = set_table(text, section, name, table)
     Config.from_dict(tomllib.loads(new), path)

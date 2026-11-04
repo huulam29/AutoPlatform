@@ -18,6 +18,7 @@ from agentline.config import Config
 from agentline.errors import ValidationError
 from agentline.secrets import delete_secret, load_secrets, read_secrets, secret_status, set_secret
 from agentline.tomlwrite import delete_table, set_table
+from tests.fakebin import WINDOWS, fake_bin
 
 from .fakes import KEY, fake_llm
 
@@ -60,7 +61,8 @@ def test_secrets_file_is_private_and_write_only(
 ) -> None:
     set_secret("OPENROUTER_API_KEY", KEY)
     path = isolated_home / "secrets.env"
-    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    if not WINDOWS:  # Windows: the per-user profile's ACL keeps it private, not the mode
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert read_secrets() == {"OPENROUTER_API_KEY": KEY}
     assert os.environ["OPENROUTER_API_KEY"] == KEY
     status = secret_status(["OPENROUTER_API_KEY", "PRIVATE_LLM_KEY"])
@@ -224,15 +226,19 @@ def test_subscription_login_status_and_sign_out(
     bin_dir, state = tmp_path / "bin", tmp_path / "logged-in"
     bin_dir.mkdir()
     state.write_text("")
-    (bin_dir / "claude").write_text(
-        f"""#!/bin/sh
-if [ "$2" = logout ]; then rm -f '{state}'; echo "Logged out"; exit 0; fi
-if [ -f '{state}' ]; then echo '{{"loggedIn": true, "subscriptionType": "max"}}'
-else echo '{{"loggedIn": false}}'; fi
+    code = f"""
+import os, sys
+state = {str(state)!r}
+if sys.argv[2:3] == ["logout"]:
+    os.remove(state)
+    print("Logged out")
+elif os.path.exists(state):
+    print('{{"loggedIn": true, "subscriptionType": "max"}}')
+else:
+    print('{{"loggedIn": false}}')
 """
-    )
-    (bin_dir / "claude").chmod(0o755)
-    monkeypatch.setenv("PATH", f"{bin_dir}:/bin:/usr/bin")
+    fake_bin(bin_dir, "claude", code=code)
+    monkeypatch.setenv("PATH", os.pathsep.join([str(bin_dir), "/bin", "/usr/bin"]))
     r = c.get("/api/providers/claude/login").json()
     assert r["logged_in"] and r["subscription"] == "max"
     assert c.get("/api/providers/local/login").status_code == 422  # not a subscription
@@ -291,14 +297,12 @@ def test_subscription_source_needs_the_claude_cli(
     assert not r["ok"] and r["problem"] == "no_cli" and r["bin"] == "claude"
     assert "claude-sonnet-5-5" in [m["id"] for m in r["models"]]  # still listed for pickers
     assert c.post("/api/harnesses/claude-code/detect").json()["problem"] == "no_cli"
-    (tmp_path / "bin").mkdir()
-    (tmp_path / "bin" / "claude").write_text("#!/bin/sh\n")
-    (tmp_path / "bin" / "claude").chmod(0o755)
+    fake_bin(tmp_path / "bin", "claude")
     r = c.post("/api/providers/claude/test").json()  # installed, but not logged in
     assert not r["ok"] and r["problem"] == "signed_out"
-    (tmp_path / "bin" / "claude").write_text("#!/bin/sh\necho '{\"loggedIn\": true}'\n")
+    fake_bin(tmp_path / "bin", "claude", code="print('{\"loggedIn\": true}')")
     r = c.post("/api/providers/claude/test").json()
-    assert r["ok"] and "opus" in [m["id"] for m in r["models"]] and r["cli"].endswith("/claude")
+    assert r["ok"] and "opus" in [m["id"] for m in r["models"]] and Path(r["cli"]).stem == "claude"
 
 
 def test_choose_models_adds_checked_and_removes_unchecked(

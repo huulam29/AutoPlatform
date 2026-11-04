@@ -8,10 +8,10 @@ import inspect
 import json
 import os
 import re
-import signal
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from typing import Any
 
+from agentline.proctree import kill_tree, resolve_argv
 from agentline.registry import Workspace
 
 # Host env vars a local subprocess may see. Everything else (tokens, keys) must be declared.
@@ -27,6 +27,19 @@ SAFE_ENV = (
     "TERM",
     "SHELL",
     "TZ",
+    # Windows: without these, child programs (git, python, cmd) can't start or find temp/home
+    "SYSTEMROOT",
+    "SYSTEMDRIVE",
+    "WINDIR",
+    "COMSPEC",
+    "PATHEXT",
+    "TEMP",
+    "TMP",
+    "USERPROFILE",
+    "USERNAME",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "PROGRAMDATA",
 )
 
 GIT_IDENTITY = {
@@ -98,7 +111,7 @@ async def run_process(
     """Run argv; return (exit code, stdout, stderr). On timeout or cancellation the whole
     process group is killed. Raises FileNotFoundError when the binary doesn't exist."""
     proc = await asyncio.create_subprocess_exec(
-        *argv,
+        *resolve_argv(argv, dict(env) if env is not None else None),
         cwd=cwd,
         env=dict(env) if env is not None else None,
         stdin=asyncio.subprocess.PIPE if input is not None else asyncio.subprocess.DEVNULL,
@@ -111,8 +124,7 @@ async def run_process(
             proc.communicate(input.encode() if input is not None else None), timeout
         )
     except (TimeoutError, asyncio.CancelledError) as e:
-        with contextlib.suppress(ProcessLookupError, PermissionError):
-            os.killpg(proc.pid, signal.SIGKILL)
+        kill_tree(proc.pid)
         with contextlib.suppress(Exception):
             await asyncio.shield(proc.wait())
         if isinstance(e, TimeoutError):

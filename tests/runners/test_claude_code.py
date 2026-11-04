@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -15,15 +14,14 @@ from agentline.registry import Limits, RunRequest
 from agentline.runners import ClaudeCodeRunner, RunnerError
 from agentline.runners.claude_code import build_argv, map_tools
 from agentline.runners.common import run_process
+from tests.fakebin import fake_bin
 
 FAKE = Path(__file__).with_name("fake_claude.py")
 
 
 @pytest.fixture
 def claude_bin(tmp_path: Path) -> str:
-    wrapper = tmp_path / "claude"
-    wrapper.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{FAKE}" "$@"\n')
-    wrapper.chmod(0o755)
+    wrapper = fake_bin(tmp_path, "claude", script=FAKE)
     return str(wrapper)
 
 

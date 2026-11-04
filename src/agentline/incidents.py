@@ -14,7 +14,6 @@ app's `app_crash`, `app_exception`, `app_unclean_exit`, `engine_exit`.
 from __future__ import annotations
 
 import contextlib
-import fcntl
 import hashlib
 import json
 import os
@@ -27,6 +26,8 @@ import traceback as tb
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
+
+from agentline.filelock import locked_file
 
 KINDS = (
     "engine_exception",
@@ -126,12 +127,8 @@ class IncidentStore:
     @contextlib.contextmanager
     def _locked(self) -> Iterator[None]:
         self.root.mkdir(parents=True, exist_ok=True)
-        with open(self.root / ".lock", "a") as f:
-            fcntl.flock(f, fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                fcntl.flock(f, fcntl.LOCK_UN)
+        with locked_file(self.root / ".lock"):
+            yield
 
     def record(
         self,
@@ -215,14 +212,14 @@ class IncidentStore:
 
     def _write(self, path: Path, record: dict[str, Any]) -> None:
         fd, tmp = tempfile.mkstemp(dir=self.root, prefix=".incident.", suffix=".tmp")
-        with os.fdopen(fd, "w") as f:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(record, f, indent=2, default=str)
         os.replace(tmp, path)
 
     @staticmethod
     def _read(path: Path) -> dict[str, Any]:
         try:
-            return dict(json.loads(path.read_text()))
+            return dict(json.loads(path.read_text(encoding="utf-8")))
         except (OSError, ValueError):
             return {}
 
