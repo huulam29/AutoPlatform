@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 from agentline import App, SqliteLedger, reveal
 from agentline.api import create_server
 from agentline.api.app import is_local_request
+from agentline.app import default_actor
 from agentline.incidents import IncidentStore
 from agentline.live import LivePipelines
 from agentline.redact import Redactor
@@ -112,7 +113,8 @@ def test_auth_check_never_returns_the_token(app: App, pdir: Path, tmp_path: Path
         assert good.json() == {
             "token_required": True,
             "ok": True,
-            "identity": {"kind": "shared", "name": "shared-token", "admin": True},
+            # this client is on loopback: the shared token from this machine is the local user
+            "identity": {"kind": "local", "name": default_actor(), "admin": True},
         }
         assert all("s3cret-token" not in r.text for r in (no, bad, good))
 
