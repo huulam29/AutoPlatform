@@ -92,7 +92,8 @@ The web Chat applies each card through the same API as its GUI page (`lib/assist
 | | delete a key | `delete_key` |
 | Settings → Chat apps | link (pair), send a test, unlink | `chat_app` op pair / test / unlink |
 | | notifications | `chat_notify` |
-| Settings → General | restart engine, choose pipelines folder (Mac app) | `engine` op restart / choose_folder |
+| Settings → General | restart engine, choose pipelines folder (Mac app, or a browser: `path`), show the data / pipelines / config folder (phase 54) | `engine` op restart / choose_folder / reveal (`target`) |
+| | sign out of the engine's API token, turn browser notifications on / off (phase 54) | none: sign-out removes this browser's own credential mid-conversation, and browsers allow the notification prompt only from a click |
 | Pipelines | create, edit (save) | `pipeline` (full YAML + files; diff shown for edits) |
 | | export / import | `export` (download) / `import` (the .zip is picked on the card) |
 | | dry run | `dry_run` (the outcome is shown on the card) |
@@ -105,6 +106,8 @@ The web Chat applies each card through the same API as its GUI page (`lib/assist
 | Approvals | approve / reject a gate | `gate` decision approve / reject |
 | Problems | issue status, add a note | `issue` |
 | | delete a crash report / all | `incident` op delete / clear |
+| App reports | export every report as a .zip (phase 54) | `engine` op export_reports |
+| | dismiss the "quit unexpectedly" banner (phase 54) | `incident` op seen |
 | Costs | monthly budget | `budget` (null removes it) |
 | Triage (phase 28) | triage a run / node (run view, Problems: Triage, Triage again) | `triage` |
 | | add a lesson to the Chat instructions (triage card) | `lesson` |

@@ -7,6 +7,9 @@
   `api.webhooks.create_app` unchanged and keep their own signature/secret auth.
 - `/api/*` (editor + runs) requires `Authorization: Bearer <token>` when `token` (default
   `$AGENTLINE_API_TOKEN`) is set; without a token the API is open, so bind to 127.0.0.1.
+- `/api/auth/check` (the sign-in screen) is outside the token check; `/api/app/*` and
+  `/api/engine/restart` answer what the Mac app's native bridge does, for a browser
+  (`api.app`). `serve` sets `server.state.stop`, `.loop`, `.address` and `.pipelines_from_cli`.
 - The built UI (`web/dist`, or `static_dir`) is served at `/` when it exists.
 - `registry` / `config` are used to validate pipelines in the editor (default: the built-in
   registry). Binding is the caller's job (`uvicorn.run(server, host=..., port=...)`).
@@ -25,6 +28,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from agentline.api.app import create_app_router, create_auth_router
 from agentline.api.assistant import create_assistant_router, create_attachments_router
 from agentline.api.bundles import create_bundles_router
 from agentline.api.chat import create_chat_router
@@ -125,6 +129,10 @@ def create_server(
             return response
 
     auth = [Depends(_token_check(token))]
+    server.include_router(create_auth_router(token), prefix="/api")
+    server.include_router(
+        create_app_router(files, server.state, token), prefix="/api", dependencies=auth
+    )
     server.include_router(create_editor_router(files), prefix="/api", dependencies=auth)
     from agentline.runchat import RunChatLoop
 

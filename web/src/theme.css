@@ -134,6 +134,10 @@
   --size-key-form: 420px;
   --size-modal: 560px;
   --size-modal-wide: 760px;
+  --size-palette: 520px; /* the command palette */
+  --size-palette-list: 360px;
+  --size-folder-list: 280px; /* the folder picker's list */
+  --size-signin: 440px;
   --size-choice-card: 180px;
   --size-field-min: 240px; /* a settings field column */
   --size-search: 320px;

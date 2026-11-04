@@ -237,6 +237,13 @@ class PipelineFiles:
 
         live.listeners.append(follow)
 
+    def set_dir(self, root: str | Path) -> None:
+        """Read and write another pipelines folder from now on (the running engine too)."""
+        with self.lock:
+            self.root = Path(root).resolve()
+        if self.live is not None:
+            self.live.set_dir(self.root)
+
     def changed(self, reason: str) -> None:
         """A pipeline file or a setting was written: the running engine picks it up now
         (a no-op without a live engine; its file watcher would also notice)."""

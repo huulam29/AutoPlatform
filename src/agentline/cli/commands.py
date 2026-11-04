@@ -334,13 +334,32 @@ def cmd_serve(env: CliEnv, args: argparse.Namespace) -> int:
     except ImportError as e:
         env.err(f"agentline serve needs the server extra ({e}): pip install 'agentline[server]'")
         return 1
-    from agentline import advisor
+    from agentline import advisor, runmarker
+    from agentline.cli.env import agentline_home
+    from agentline.enginelock import EngineLock, EngineLocked
 
     if advisor.enabled() and env.app.advisor is None:  # decisions 3 and 78
         env.app.advisor = advisor.make_advisor(asgi.state.pipeline_files)
 
+    home = agentline_home()
+    host = f"[{args.host}]" if ":" in args.host else args.host
+    address = f"http://{host}:{args.port}"
+    lock = EngineLock(home)
+    try:  # one engine per data folder; the Mac app's restart may overlap its old engine
+        lock.acquire(address, wait=10.0 if runmarker.in_mac_app() else 0.0)
+    except EngineLocked as e:
+        env.err(f"serve: {e}")
+        return 1
+    runmarker.check_previous(home, env.app.incidents)
+    runmarker.write(home, address)
+    asgi.state.address = address
+    asgi.state.pipelines_from_cli = bool(getattr(args, "pipelines", None))
+    asgi.state.restart = False
+
     async def main() -> None:
         stop = asyncio.Event()
+        asgi.state.stop = stop  # POST /api/engine/restart sets it (with state.restart)
+        asgi.state.loop = asyncio.get_running_loop()
         config = uvicorn.Config(
             asgi, host=args.host, port=args.port, log_config=None, lifespan="off"
         )
@@ -366,8 +385,22 @@ def cmd_serve(env: CliEnv, args: argparse.Namespace) -> int:
                 await work
                 stopper.cancel()
 
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    finally:
+        runmarker.remove(home)  # a normal stop; a kill leaves it for the next start
+        lock.release()
+    if asgi.state.restart:
+        _restart_in_place(env)
     return 0
+
+
+def _restart_in_place(env: CliEnv) -> None:
+    """POST /api/engine/restart: the same command again, in this process (same address)."""
+    env.err("serve: restarting")
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os.execv(sys.executable, [sys.executable, "-m", "agentline.cli", *sys.argv[1:]])
 
 
 # -- runs -------------------------------------------------------------------------------------

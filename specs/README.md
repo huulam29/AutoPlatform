@@ -28,6 +28,7 @@ No clarification markers remain.
 | [003-secret-handling](003-secret-handling/spec.md) | Secrets file, redaction, environment scoping, webhook and API auth, pre-commit scan | 0 |
 | [004-actions-and-triggers](004-actions-and-triggers/spec.md) | Built-in actions and their effect strategies, webhooks, the poller, Jira polling | 0 |
 | [005-agent-execution](005-agent-execution/spec.md) | Mirrors, worktrees, containers, images and proposals, runners, tool limits, costs | 0 |
+| [006-web-ui-parity](006-web-ui-parity/spec.md) | A plain browser does what the Mac app does (feature spec, built in phase 54) | 0 |
 
 ## Not covered yet
 

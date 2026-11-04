@@ -605,6 +605,10 @@ expects, and nothing else from the host env leaks. The `llm` runner calls OpenAI
 | 83 | When several Jira poll pipelines match one assignment, only the first starts a run (the poll dedupe key has no pipeline name, unlike the webhook's): intended | user | Phase 53 |
 | 84 | Each task of a `for_each` agent node with a workspace gets its own worktree, branch (`agentline/<run>-task<n>`) and container; operations on one mirror take turns | user | Phase 53 |
 | 85 | Containers keep bridge networking (any host is reachable) until egress control is built; §11.1 says so | user | Phase 53 |
+| 86 | A plain browser gets every Mac app feature (spec 006): engine API routes for app info, restart, folders, reveal and report export; the Mac app keeps its native bridge | user | Phase 54 |
+| 87 | Browsing the engine machine's folders and setting the pipelines folder follow the API's token rule (local, or with the token); Show in folder is local only | user | Phase 54 |
+| 88 | Browser notifications follow the Mac app's rules (each gate once, runs that become done / dead / needs-review after a baseline, new reports) | user | Phase 54 |
+| 89 | Restart from the web is in place (`os.execv`, same arguments and address); `serve` holds one lock per data folder and a start marker for unclean exits; Mac app tests aren't run on a Windows build machine while `macos/` is untouched | plan (restart, marker); user (lock, Mac tests) | Phase 54 |
 
 ## 13. Open questions
 
