@@ -128,7 +128,7 @@ def test_insights_per_pipeline_day_and_node(world: World) -> None:
     rep = metrics.insights(world.app, days=7)
     [p] = rep["pipelines"]
     assert p["pipeline"] == "p" and p["runs"] == 2 and p["done"] == 2
-    assert p["success_rate"] == 1.0 and p["loops"] == 2 * 2  # write and check, twice each
+    assert p["success_rate"] == 1.0 and p["loops"] == 2  # run b took the loop twice
     assert p["down"] == 1 and len(rep["by_day"]) == 7 and rep["by_day"][-1]["runs"] == 2
     assert rep["nodes"] == []  # only with a pipeline
     rep = metrics.insights(world.app, days=7, pipeline="p")
@@ -206,6 +206,7 @@ def test_on_feedback_off(tmp_path: Path) -> None:
     got = review.find_runs(w.app, w.store, time.time() - 60, w.cfg, now=time.time() + 60,
                            triage_store=w.tstore)  # fmt: skip
     assert got and got[0].get("force") is None  # found by its signals, not as feedback
+    (tmp_path / "b").mkdir()
     w2 = World(tmp_path / "b", toml='[review]\nauto = "off"\n')
     run2 = w2.run(loops=0)
     feedback.add(w2.app, run2, "down")

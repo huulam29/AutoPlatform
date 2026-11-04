@@ -276,7 +276,10 @@ def insights(
             f["cost_usd"] += float(r.cost_usd or 0.0)
             f["tokens"] += sum((tok or {}).values())
             f["retries"] += sum(max(0, x.attempt - 1) for x in execs)
-            f["loops"] += sum(i - 1 for i in top.values())
+            if graph is not None:  # loop edges taken, as review.signals counts them
+                f["loops"] += sum(tx.loop_count(r.id, e.id) for e in graph.edges if e.loop)
+            else:  # the pipeline isn't loaded: the most extra iterations of one node
+                f["loops"] += max((i - 1 for i in top.values()), default=0)
             f["rejections"] += sum(
                 1 for x in execs if x.status == "dead" and _kind(graph, x.node_id) == "gate"
             )
