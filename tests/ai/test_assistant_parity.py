@@ -231,6 +231,19 @@ CASES: list[tuple[dict[str, Any], str]] = [
         {"type": "pipeline_lesson", "pipeline": "ghost", "node": "p", "cue": "c", "lesson": "l"},
         "no pipeline file",
     ),
+    ({"type": "feedback", "run": "r1", "rating": "down", "comment": "skipped tests"}, ""),
+    ({"type": "feedback", "run": "r1", "rating": "up", "node": "plan"}, ""),
+    ({"type": "feedback", "run": "r1", "rating": "meh"}, "rating must be"),
+    ({"type": "feedback", "run": "r 1", "rating": "up"}, "bad run id"),
+    ({"type": "feedback", "run": "r1", "rating": "up", "comment": "x" * 2001}, "at most"),
+    ({"type": "run_report", "run": "r1"}, ""),
+    ({"type": "run_report", "run": "r1", "format": "pdf"}, "format must be"),
+    ({"type": "telemetry", "enabled": True, "endpoint": "http://localhost:4318"}, ""),
+    ({"type": "telemetry", "op": "test"}, ""),
+    ({"type": "telemetry", "enabled": True}, "address before"),
+    ({"type": "telemetry", "endpoint": "ftp://x"}, "http://"),
+    ({"type": "telemetry", "headers_secret": "bad name"}, "not a secret name"),
+    ({"type": "telemetry"}, "give enabled"),
 ]
 
 

@@ -62,7 +62,9 @@ DEFAULTS: dict[str, Any] = {
     "max_probes": 2,
     "probe_budget_usd": 1.0,
     "followup_runs": 5,
+    "on_feedback": "on",
 }
+FEEDBACK_SETTLE = 30.0  # feedback this close together is taken in one review
 
 
 def reviews_dir() -> Path:
@@ -76,6 +78,8 @@ def config(cfg: Any) -> dict[str, Any]:
     out = dict(DEFAULTS)
     if raw.get("auto") in ("signals", "all", "off"):
         out["auto"] = raw["auto"]
+    if raw.get("on_feedback") in ("on", "off"):
+        out["on_feedback"] = raw["on_feedback"]
     for k in ("spike_factor", "probe_budget_usd"):
         v = raw.get(k)
         if isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0:
@@ -183,6 +187,7 @@ def _trouble(sig: dict[str, Any]) -> float:
         + len(sig["gate_rejections"])
         + len(sig["needs_review"])
         + len(sig["empty"])
+        + int((sig.get("feedback") or {}).get("down") or 0)  # people's thumbs-down (phase 58)
     )
 
 
@@ -190,6 +195,7 @@ def signals(
     app: Any, run_id: str, *, cfg: Any = None, triage_store: Any = None, spike: bool = True
 ) -> dict[str, Any] | None:
     """What a run did the hard way (no model call). None when there's no such run."""
+    from agentline import feedback as fb
     from agentline.triage import TriageStore, _empty
 
     with app.ledger.tx() as tx:
@@ -198,6 +204,7 @@ def signals(
             return None
         execs = tx.list_executions(run_id)
         journal = tx.list_journal(run_id)
+        fb_rows = [fb._entry(j) for j in journal if j.kind == fb.KIND]
         graph = None
         with contextlib.suppress(Exception):
             graph = app.graph(run.flow, run)
@@ -247,6 +254,7 @@ def signals(
         "spike": None,
         "triage": [],
         "nodes": sorted({x.node_id for x in execs}),
+        "feedback": _feedback_signal(fb_rows),
     }
     if spike:
         rc = config(cfg)
@@ -270,8 +278,22 @@ def signals(
     return out
 
 
+def _feedback_signal(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    from agentline import feedback as fb
+
+    summ = fb.summarize(rows)
+    return {
+        "up": summ["up"],
+        "down": summ["down"],
+        "comments": summ["comments"],
+        "lines": fb.text(rows),
+        "upto": fb.newest_id(rows),
+    }
+
+
 def has_signals(sig: dict[str, Any]) -> bool:
-    return bool(sig["trouble"] or sig["spike"] or sig["triage"])
+    f = sig.get("feedback") or {}
+    return bool(sig["trouble"] or sig["spike"] or sig["triage"] or f.get("comments"))
 
 
 def signal_lines(sig: dict[str, Any]) -> list[str]:
@@ -295,6 +317,12 @@ def signal_lines(sig: dict[str, Any]) -> list[str]:
         out.append(f"{k} spike: {fmt(v['run'])} vs a median of {fmt(v['median'])}")
     for t in sig["triage"]:
         out.append(f"triage of {t.get('node') or 'the run'}: {t.get('verdict') or t.get('status')}")
+    f = sig.get("feedback") or {}
+    if f.get("down") or f.get("comments"):
+        out.append(
+            f"people's feedback: {f.get('down', 0)} thumbs down, {f.get('up', 0)} up,"
+            f" {f.get('comments', 0)} comment(s)"
+        )
     return out
 
 
@@ -340,6 +368,10 @@ Write three things.
    null.
 
 Failed nodes are triaged separately (TRIAGE OF THIS RUN): don't propose the same fix again.
+
+PEOPLE'S FEEDBACK (in the EVIDENCE) is what the people using this pipeline said about the run
+or a node's output. A thumbs-down or a comment is a problem to explain and fix even when the run
+ended "done": find in the evidence what they mean and cite it in a row.
 
 Reply with ONE JSON object and nothing else:
 {
@@ -403,6 +435,9 @@ def run_text(app: Any, run_id: str, sig: dict[str, Any]) -> str:
             "## SIGNALS",
             *(f"- {s}" for s in signal_lines(sig)),
             "" if signal_lines(sig) else "- none",
+            "",
+            "## PEOPLE'S FEEDBACK",
+            *(f"- {s}" for s in (sig.get("feedback") or {}).get("lines") or ["none"]),
             "",
             "## EXECUTIONS (in order)",
         ]
@@ -668,6 +703,7 @@ async def review(
     if rid in _inflight:
         return old or {**_record(run_id, "", manual), "status": "running"}
     _inflight.add(rid)
+    upto: int | None = None
     try:
         sig = sig or await asyncio.to_thread(
             signals, app, run_id, cfg=cfg, triage_store=triage_store
@@ -676,6 +712,8 @@ async def review(
             raise KeyError(run_id)
         rec = _record(run_id, sig["flow"], manual)
         rec["signals"] = sig
+        upto = int((sig.get("feedback") or {}).get("upto") or 0)
+        rec["feedback_upto"] = upto
         if old is not None:
             rec["created_at"] = old.get("created_at", rec["created_at"])
             rec["adopted"] = old.get("adopted") or {}
@@ -722,6 +760,11 @@ async def review(
         return store.save(rec)
     finally:
         _inflight.discard(rid)
+        if upto is not None:
+            from agentline import feedback as fb
+
+            with contextlib.suppress(OSError):
+                fb.clear_pending(run_id, upto)
 
 
 def probe_candidates(rec: dict[str, Any], cfg: Any) -> list[int]:
@@ -1008,6 +1051,45 @@ def find_runs(
             out.append(sig)
         else:
             seen.add(r.id)
+    if config(cfg)["on_feedback"] == "on":
+        picked = {s["run"] for s in out}
+        out.extend(_feedback_runs(app, store, cfg, tstore, picked, now))
+    return out
+
+
+def _feedback_runs(
+    app: Any, store: ReviewStore, cfg: Any, tstore: Any, picked: set[str], now: float
+) -> list[dict[str, Any]]:
+    """Runs whose people's feedback (a thumbs-down or a comment) arrived after their review, or
+    that have none yet: reviewed (again) once the feedback has settled. Their signals carry
+    `force: True`."""
+    from agentline import feedback as fb
+    from agentline.triage import auto_enabled as triage_on
+
+    out = []
+    for run_id, p in fb.read_pending().items():
+        if run_id in picked or now - float(p.get("at") or 0) < FEEDBACK_SETTLE:
+            continue
+        with app.ledger.tx() as tx:
+            r = tx.get_run(run_id)
+        if r is None or r.status == "cancelled":
+            fb.clear_pending(run_id, int(p.get("id") or 0))
+            continue
+        if r.status not in REVIEWED_RUN or now - r.updated_at < SETTLE:
+            continue  # still going: reviewed when it ends
+        if r.status == "dead" and triage_on() and now - r.updated_at < TRIAGE_GRACE:
+            recs = tstore.list(r.id)
+            if not recs or any(t.get("status") == "running" for t in recs):
+                continue
+        rec = store.get(review_id(run_id))
+        if rec is not None and rec.get("status") == "running":
+            continue
+        if rec is not None and int(rec.get("feedback_upto") or 0) >= int(p.get("id") or 0):
+            fb.clear_pending(run_id, int(p.get("id") or 0))
+            continue
+        sig = signals(app, run_id, cfg=cfg, triage_store=tstore)
+        if sig is not None:
+            out.append({**sig, "force": True})
     return out
 
 
@@ -1033,7 +1115,8 @@ async def run_review_loop(
             for sig in found:
                 if stop.is_set():
                     break
-                rec = await review(app, files, sig["run"], store=store, sig=sig)
+                force = bool(sig.pop("force", False))
+                rec = await review(app, files, sig["run"], store=store, sig=sig, force=force)
                 log.info("review %s of run %s: %s", rec["id"], sig["run"], rec.get("status"))
                 for i in probe_candidates(rec, cfg) if rec.get("status") == "done" else []:
                     if stop.is_set():

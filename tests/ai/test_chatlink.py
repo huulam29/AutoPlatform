@@ -170,7 +170,9 @@ def test_failures_are_reported_once(world: Any) -> None:
     drain(app)
     step(link)
     assert tg.last()["text"].startswith("❌ broken run") and "disk full" in tg.last()["text"]
-    assert tg.buttons(tg.last()) == [("Retry boom", "rt:1"), ("Fix it", "fx:1")]
+    assert tg.buttons(tg.last()) == [
+        ("Retry boom", "rt:1"), ("Fix it", "fx:1"), ("👍", "fu:1"), ("👎", "fd:1"),
+    ]  # fmt: skip
     n = len(tg.sent)
     step(link)
     assert len(tg.sent) == n
@@ -348,6 +350,33 @@ def test_gatekeeper_talks_in_the_chat(tmp_path: Path, monkeypatch: pytest.Monkey
         audit = [a for a in tx.list_audit(run.id) if a.action == "retry"]
     assert audit[0].detail["via"] == "telegram:@user42"
     assert audit[0].actor == "telegram:@user42"  # the card's tap, not the OS user (spec 011)
+
+
+def test_rate_a_run_from_the_chat(world: Any) -> None:
+    from agentline import feedback
+
+    link, tg, app = world
+    pair(link, tg)
+    sub = app.submit_sync("broken", {})
+    drain(app)
+    step(link)
+    tg.tap("fd:1")  # 👎 under the run's end notice
+    step(link)
+    assert "rated 👎" in tg.last()["text"] and "What went wrong?" in tg.last()["text"]
+    tg.text(f"/rate {sub.run_id} down the disk was full again")
+    step(link)
+    assert "with your comment" in tg.last()["text"]
+    tg.text("/rate nope up")
+    step(link)
+    assert tg.last()["text"] == "No run nope."
+    tg.text(f"/rate {sub.run_id} meh")
+    step(link)
+    assert "rating must be" in tg.last()["text"]
+    rows = feedback.entries(app, sub.run_id)
+    assert [r["rating"] for r in rows] == ["down", "down"]
+    assert rows[-1]["comment"] == "the disk was full again"
+    assert rows[0]["by"] == f"telegram:@user{state.linked()['user_id']}"
+    assert sub.run_id in feedback.read_pending()  # the review loop will look at it
 
 
 # -- who chat-link actions are recorded as (spec 011) ------------------------------------------

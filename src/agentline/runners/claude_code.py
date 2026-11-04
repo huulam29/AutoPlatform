@@ -170,6 +170,7 @@ class ClaudeCodeRunner:
         cost = float(data.get("total_cost_usd") or data.get("cost_usd") or 0.0)
         meta: dict[str, Any] = {
             "turns": data.get("num_turns"),
+            "usage": data.get("usage") if isinstance(data.get("usage"), dict) else None,
             "session_id": data.get("session_id"),
             "model": p.get("model") or _model_from(data),
             "subtype": data.get("subtype"),

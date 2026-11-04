@@ -7,6 +7,7 @@ In (only from the linked user; anyone else gets a "private bot" note):
   /run <pipeline> [json]    start a run (text / chat start points: /run <pipeline> <words>)
   /say <run> <text>         talk to a run's gatekeeper (or reply to one of its messages)
   /answer <text>            answer the newest open question (or reply to it)
+  /rate <run> up|down [comment]   rate a run (also: the 👍 / 👎 under a run's end notice)
   /new                      start a new assistant conversation
   anything else             the editor assistant (proposals come with Apply buttons; keys
                             are never accepted here)
@@ -61,6 +62,7 @@ HELP = (
     "/approve <run> [node], /reject <run> [comment]: decide a gate\n"
     "/retry <run> [node]: retry a failed run, or one node (only its failed tasks)\n"
     "/answer <text>: answer the newest question (or reply to it)\n"
+    "/rate <run id> up|down [comment]: say how a run went (it helps improve the pipeline)\n"
     "/new: start a new assistant conversation\n"
     "Anything else goes to the assistant (set up agentline, build or change pipelines)."
 )
@@ -274,6 +276,12 @@ class ChatLink:
                 return
             newest = max(open_asks, key=float)  # ids: Telegram ints, Slack ts, Discord snowflakes
             await self.answer(tg, chat, open_asks[newest], rest, link)
+        elif cmd == "/rate":
+            parts = rest.split(maxsplit=2)
+            if len(parts) < 2:
+                await say("usage: /rate <run id> up|down [comment]")
+                return
+            await say(await self.rate(parts[0], parts[1], parts[2] if len(parts) > 2 else "", link))
         elif cmd == "/new":
             with self.state.edit() as d:
                 d["history"] = []
@@ -322,6 +330,11 @@ class ChatLink:
                 )
                 if msg.get("message_id"):
                     await asyncio.to_thread(tg.clear_buttons, chat, msg["message_id"])
+        elif kind in ("fu", "fd"):
+            run_id = (self.state.read().get("rates") or {}).get(arg)
+            if run_id:
+                rating = "up" if kind == "fu" else "down"
+                await asyncio.to_thread(tg.send, chat, await self.rate(run_id, rating, "", link))
         elif kind == "fx":
             r = (self.state.read().get("retries") or {}).get(arg)
             if r:
@@ -381,6 +394,24 @@ class ChatLink:
         if not n:
             return f"Nothing to retry in run {run_id}" + (f" at {node}" if node else "") + "."
         return f"Retrying run {run_id}" + (f" at {node}" if node else "") + "."
+
+    async def rate(self, run_id: str, rating: str, comment: str, link: dict[str, Any]) -> str:
+        """Record a person's rating of a run (agentline.feedback), as `<platform>:@<user>`."""
+        from agentline import feedback as fb
+
+        try:
+            await asyncio.to_thread(fb.add, self.app, run_id, rating, comment, by=self._via(link))
+        except KeyError:
+            return f"No run {run_id}."
+        except ValidationError as e:
+            return f"Couldn't rate: {e}"
+        if rating == "down" and not comment:
+            return (
+                f"Thanks: run {run_id} rated 👎. What went wrong? Tell me with"
+                f" /rate {run_id} down <what was wrong>; the run review reads it."
+            )
+        word = {"up": "👍", "down": "👎"}.get(rating, "no rating")
+        return f"Thanks: run {run_id} rated {word}" + (" with your comment." if comment else ".")
 
     async def answer(
         self, tg: Telegram, chat: int, key: str, text: str, link: dict[str, Any]
@@ -557,18 +588,22 @@ class ChatLink:
                 text = f"{icon} {r.flow} run {r.id}: {r.status}"
                 if r.error:
                     text += f"\n{r.error[:1500]}"
+                rate = f"{len(self.state.read().get('rates') or {}) + 1}"
+                thumbs = [("👍", f"fu:{rate}"), ("👎", f"fd:{rate}")]
                 if r.status == "done":
-                    mid = await asyncio.to_thread(tg.send, chat, text)
-                    self._mark(key, mid)
+                    mid = await asyncio.to_thread(tg.send, chat, text, buttons=[thumbs])
+                    self._mark(key, mid, rates={rate: r.id})
                     continue
                 failed_nodes = self._failed_nodes(r.id)
                 short = f"{len(self.state.read().get('retries') or {}) + 1}"
                 retry_label = f"Retry {failed_nodes[0]}" if len(failed_nodes) == 1 else "Retry run"
-                buttons = [[(retry_label, f"rt:{short}"), ("Fix it", f"fx:{short}")]]
+                buttons = [[(retry_label, f"rt:{short}"), ("Fix it", f"fx:{short}")], thumbs]
                 text += "\n\nRetry reruns only what failed (finished tasks are kept)."
                 mid = await asyncio.to_thread(tg.send, chat, text, buttons=buttons)
                 node = failed_nodes[0] if len(failed_nodes) == 1 else None
-                self._mark(key, mid, retries={short: {"run": r.id, "node": node}})
+                self._mark(
+                    key, mid, retries={short: {"run": r.id, "node": node}}, rates={rate: r.id}
+                )
         if prefs["failures"]:  # failure triage verdicts (agentline.triage)
             from agentline.triage import TriageStore, chat_text
 
@@ -755,6 +790,15 @@ class ChatLink:
 
                 await asyncio.to_thread(chat_instructions.add_lesson, str(a.get("text") or ""))
                 done = "Added the lesson to the Chat instructions."
+            elif a.get("type") == "feedback":
+                from agentline import feedback as fb
+
+                link = self.state.linked() or {}
+                await asyncio.to_thread(
+                    fb.add, self.app, str(a.get("run")), str(a.get("rating")),
+                    str(a.get("comment") or ""), node=a.get("node"), by=self._via(link),
+                )  # fmt: skip
+                done = f"Recorded your feedback on run {a.get('run')}."
             elif a.get("type") == "key":
                 done = "Keys are set in the app (Settings > Chat apps)."
             else:

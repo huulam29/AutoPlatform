@@ -16,6 +16,7 @@ import { NotificationsSetting } from "./NotificationsSetting";
 import { NewRow, RowItem, Rows, SettingsPage } from "./SettingsRows";
 import type { HarnessPreset } from "../types";
 import { GitHubSetup } from "./GitHubSetup";
+import { TelemetrySetting } from "./TelemetrySetting";
 import { AddSkillsDialog } from "./settings/AddSkillsDialog";
 import type { InstalledFrom } from "../api";
 
@@ -824,6 +825,7 @@ export function GeneralSection({ children }: { children?: ReactNode }) {
       </p>
       {web && <BrowserEngine info={web} onChanged={load} />}
       <GitHubSetup />
+      <TelemetrySetting />
       {info?.dev && <p className="small warn">Development mode: AGENTLINE_DEV_PYTHON is set.</p>}
       {isMacApp() && (
         <div className="row">

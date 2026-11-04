@@ -211,7 +211,18 @@ async def _work(
         *([_triage_loop(env, stop, server)] if server is not None else []),
         *([_review_loop(env, stop, server)] if server is not None else []),
         *([_runchat_loop(stop, server)] if server is not None else []),
+        *([_telemetry_loop(env, stop, server)] if server is not None else []),
     )
+
+
+async def _telemetry_loop(env: CliEnv, stop: asyncio.Event, server: Any) -> None:
+    """Optional OpenTelemetry export of finished runs (agentline.telemetry): sends nothing
+    unless `[telemetry] enabled`; AGENTLINE_TELEMETRY=off stops it whatever the settings."""
+    from agentline.telemetry import killed, run_telemetry_loop
+
+    if killed():
+        return
+    await run_telemetry_loop(env.app, server.state.pipeline_files, stop)
 
 
 async def _runchat_loop(stop: asyncio.Event, server: Any) -> None:
@@ -1161,4 +1172,113 @@ def cmd_new(env: CliEnv, args: argparse.Namespace) -> int:
         return 1
     env.out(f"{pipeline}: ok ({spec.name}, {len(spec.nodes)} nodes)")
     env.out(f"next: edit the 'change me' lines, then agentline validate {pipeline}")
+    return 0
+
+
+# -- feedback, metrics, reports, insights (phase 58) -----------------------------------------
+def _dur(s: float) -> str:
+    return f"{s / 60:.1f} min" if s >= 90 else f"{s:.0f} s"
+
+
+def cmd_runs_metrics(env: CliEnv, args: argparse.Namespace) -> int:
+    from agentline import metrics
+
+    m = metrics.run_metrics(env.app, args.run)
+    if m is None:
+        env.err(f"no run {args.run}")
+        return 1
+    if args.json:
+        env.out_json(m)
+        return 0
+    t = m["totals"]
+    tok = t["tokens"]
+    env.out(
+        f"run {m['run']} ({m['flow']}, {m['status']}): wall {_dur(m['wall_s'])}, work"
+        f" {_dur(t['work_s'])}, waiting {_dur(t['waiting_s'])}, queued {_dur(t['queued_s'])},"
+        f" ${m['cost_usd']:.4f}"
+        + (f", tokens {tok['input']} in / {tok['output']} out" if tok else "")
+        + f", feedback {m['feedback']['up']} up / {m['feedback']['down']} down"
+    )
+    for n in m["nodes"]:
+        tok = n["tokens"]
+        env.out(
+            f"  {n['node']:<24} x{n['executions']} retries {n['retries']} work"
+            f" {_dur(n['work_s'])} waiting {_dur(n['waiting_s'])} ${n['cost_usd']:.4f}"
+            + (f" tokens {tok['input']}/{tok['output']}" if tok else "")
+            + (f" turns {n['turns']}" if n["turns"] is not None else "")
+        )
+    return 0
+
+
+def cmd_runs_report(env: CliEnv, args: argparse.Namespace) -> int:
+    from agentline import runreport
+
+    rep = runreport.build(env.app, args.run)
+    if rep is None:
+        env.err(f"no run {args.run}")
+        return 1
+    text = (
+        json.dumps(rep, indent=2, default=str)
+        if args.format == "json"
+        else (runreport.markdown(rep))
+    )
+    if args.output:
+        Path(args.output).write_text(text, encoding="utf-8")
+        env.out(f"wrote the report of run {args.run} to {args.output}")
+    else:
+        env.out(text)
+    return 0
+
+
+def cmd_feedback(env: CliEnv, args: argparse.Namespace) -> int:
+    """`feedback RUN up|down|none [-m comment] [--node N]`; without a rating, list it."""
+    from agentline import feedback as fb
+    from agentline.errors import ValidationError
+
+    if args.rating is None:
+        with env.app.ledger.tx() as tx:
+            if tx.get_run(args.run) is None:
+                env.err(f"no run {args.run}")
+                return 1
+        rows = fb.entries(env.app, args.run)
+        if args.json:
+            env.out_json({"entries": rows, "summary": fb.summarize(rows)})
+        else:
+            env.out("\n".join(fb.text(rows, 1000)) or "no feedback")
+        return 0
+    try:
+        e = fb.add(env.app, args.run, args.rating, args.message or "", node=args.node,
+                   by=env.actor)  # fmt: skip
+    except KeyError:
+        env.err(f"no run {args.run}")
+        return 1
+    except ValidationError as err:
+        env.err(str(err))
+        return 1
+    env.out(fb.text([e])[0])
+    return 0
+
+
+def cmd_insights(env: CliEnv, args: argparse.Namespace) -> int:
+    from agentline import metrics
+
+    rep = metrics.insights(env.app, args.days, args.pipeline)
+    if args.json:
+        env.out_json(rep)
+        return 0
+    if not rep["pipelines"]:
+        env.out(f"no finished runs in the last {rep['days']} days")
+        return 0
+    for f in rep["pipelines"]:
+        env.out(
+            f"{f['pipeline']:<28} runs {f['runs']:>4}  ok {100 * f['success_rate']:.0f}%"
+            f"  median {_dur(f['median_s'])}  p90 {_dur(f['p90_s'])}"
+            f"  ${f['cost_per_run']:.4f}/run  retries {f['retries']}  loops {f['loops']}"
+            f"  rejected {f['rejections']}  👍 {f['up']} 👎 {f['down']}"
+        )
+    for n in rep["nodes"]:
+        env.out(
+            f"  {n['node']:<26} x{n['executions']}  failed {100 * n['failure_rate']:.0f}%"
+            f"  median {_dur(n['median_s'])}  ${n['cost_usd']:.4f}  👍 {n['up']} 👎 {n['down']}"
+        )
     return 0

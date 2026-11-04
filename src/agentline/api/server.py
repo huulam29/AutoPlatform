@@ -35,6 +35,7 @@ from agentline.api.chat import create_chat_router
 from agentline.api.costs import create_costs_router
 from agentline.api.dryrun import create_dryrun_router
 from agentline.api.editor import PipelineFiles, create_editor_router
+from agentline.api.feedback import create_feedback_router
 from agentline.api.github import create_github_router
 from agentline.api.history import create_history_router
 from agentline.api.identity import identity_dependency
@@ -157,6 +158,7 @@ def create_server(
         dependencies=auth,
     )
     server.include_router(create_reviews_router(app, files), prefix="/api", dependencies=auth)
+    server.include_router(create_feedback_router(app, files), prefix="/api", dependencies=auth)
 
     async def internal_error(request: Request, exc: Exception) -> JSONResponse:
         """Any unhandled error in a request becomes an incident; the client gets its id."""

@@ -113,6 +113,25 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--node", help="only this node (dead or needs-review); keeps finished tasks")
     p = add(rs, "cancel", c.cmd_runs_cancel, "cancel a run")
     p.add_argument("run")
+    p = add(rs, "metrics", c.cmd_runs_metrics, "time, cost, tokens and retries per node")
+    p.add_argument("run")
+    p.add_argument("--json", action="store_true")
+    p = add(rs, "report", c.cmd_runs_report, "the run as one redacted report (Markdown or JSON)")
+    p.add_argument("run")
+    p.add_argument("--format", choices=("md", "json"), default="md")
+    p.add_argument("-o", "--output", help="write to this file instead of printing")
+
+    p = add(sub, "feedback", c.cmd_feedback, "rate a run or a node's output (or list ratings)")
+    p.add_argument("run")
+    p.add_argument("rating", nargs="?", choices=("up", "down", "none"))
+    p.add_argument("-m", "--message", help="a comment (what was good or wrong)")
+    p.add_argument("--node", help="rate this node's latest output instead of the run")
+    p.add_argument("--json", action="store_true")
+
+    p = add(sub, "insights", c.cmd_insights, "trends of finished runs per pipeline and node")
+    p.add_argument("--days", type=int, default=30)
+    p.add_argument("--pipeline", help="also list this pipeline's nodes (its name:)")
+    p.add_argument("--json", action="store_true")
 
     p = add(
         sub,
