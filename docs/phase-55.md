@@ -54,4 +54,19 @@ On Windows 11 (Python 3.11, Git Bash) `import agentline` failed at once: `incide
 
 ## Verification
 
-RESULTS
+- Windows 11, Git Bash, Python 3.11: `uv run pytest -m "not slow"` gives 975 passed, 54 skipped,
+  0 failed. The skips are 35 Postgres contract tests (no `AGENTLINE_PG_DSN`), 2 smoke tests,
+  12 POSIX-shell tests and 5 container tests.
+- Ubuntu (WSL 2), Python 3.14, fresh clone of the branch: 992 passed, 37 skipped. `ruff check`
+  and `ruff format --check` are clean.
+- `agentline serve` on Windows (scratch `AGENTLINE_HOME`, db and config; `web/dist` built
+  with `npm ci && npm run build`) serves Studio on `127.0.0.1`. `/api/pipelines` lists the
+  example, and the editor opens `ticket-to-eod` and shows it as valid.
+- Not tried on Windows: a real agent CLI (`claude.cmd`) running a node; the slow chaos and e2e
+  tests; Docker Desktop.
+
+## Known limits
+
+- Fake CLIs are `.cmd` shims, so argv goes through `cmd.exe`. An argument containing a newline
+  would be cut there. Real npm shims (`claude.cmd`) have the same limit. The runners pass
+  prompts as arguments, so a multi-line prompt to a `.cmd`-installed CLI on Windows is untested.
